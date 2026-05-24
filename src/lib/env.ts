@@ -57,10 +57,16 @@ const Env = z.object({
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
 });
 
-const parsed = Env.safeParse(process.env);
+// Durante `next build` em containers (Dockerfile/CI) as envs vivem só em runtime —
+// SKIP_ENV_VALIDATION=1 permite o build coletar page data sem variáveis reais.
+// Runtime ainda valida normalmente.
+const skip = process.env.SKIP_ENV_VALIDATION === '1';
+
+const parsed = skip
+  ? { success: true as const, data: process.env as unknown as z.infer<typeof Env> }
+  : Env.safeParse(process.env);
 
 if (!parsed.success) {
-  // Não usar logger aqui — pode não estar disponível ainda
   console.error('Invalid environment variables:');
   for (const issue of parsed.error.issues) {
     console.error(`  ${issue.path.join('.')}: ${issue.message}`);
