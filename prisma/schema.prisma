@@ -1,0 +1,1146 @@
+// SmartDesk — schema completo. Fonte de verdade documentada em docs/02-data-model.md.
+// Convenções:
+//  - UUID v4 em CHAR(36)
+//  - organization_id NOT NULL em toda tabela de tenant
+//  - timestamps em DATETIME(3) (precisão ms)
+//  - soft delete via deleted_at quando aplicável
+//  - JSON columns para payloads dinâmicos
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// =========================
+// 1. Identity & tenancy
+// =========================
+
+model Organization {
+  id        String       @id @default(uuid()) @db.Char(36)
+  slug      String       @unique
+  name      String
+  status    OrgStatus    @default(active)
+  plan      String       @default("trial")
+  ticketSeq Int          @default(100000)    @map("ticket_seq")
+  createdAt DateTime     @default(now())     @map("created_at")
+  updatedAt DateTime     @updatedAt          @map("updated_at")
+  deletedAt DateTime?                        @map("deleted_at")
+
+  members             OrganizationUser[]
+  teams               Team[]
+  queues              Queue[]
+  tags                Tag[]
+  requesters          Requester[]
+  tickets             Ticket[]
+  ticketMessages      TicketMessage[]
+  ticketAttachments   TicketAttachment[]
+  ticketEvents        TicketEvent[]
+  ticketEnrichments   TicketEnrichment[]
+  forms               Form[]
+  formFields          FormField[]
+  formSubmissions     FormSubmission[]
+  gmailConnections    GmailConnection[]
+  whatsappConnections WhatsappConnection[]
+  apiIntegrations     ApiIntegration[]
+  apiIntegrationRuns  ApiIntegrationRun[]
+  ticketLayouts       TicketLayout[]
+  automationRules     AutomationRule[]
+  slaPolicies         SlaPolicy[]
+  savedFilters        SavedFilter[]
+  emailRoutingRules   EmailRoutingRule[]
+  imapSmtpConnections ImapSmtpConnection[]
+  macros              Macro[]
+  csatSurveys         CsatSurvey[]
+  notifications       Notification[]
+  kbArticles          KbArticle[]
+  webhookEndpoints    WebhookEndpoint[]
+  apiKeys             ApiKey[]
+
+  @@map("organizations")
+}
+
+enum OrgStatus {
+  active
+  suspended
+  archived
+}
+
+model User {
+  id              String    @id @default(uuid()) @db.Char(36)
+  email           String    @unique
+  emailVerifiedAt DateTime?                       @map("email_verified_at")
+  passwordHash    String?                         @map("password_hash")
+  name            String
+  avatarUrl       String?                         @map("avatar_url")
+  totpSecret      String?                         @map("totp_secret")
+  totpEnabledAt   DateTime?                       @map("totp_enabled_at")
+  lastLoginAt     DateTime?                       @map("last_login_at")
+  createdAt       DateTime  @default(now())       @map("created_at")
+  updatedAt       DateTime  @updatedAt            @map("updated_at")
+  deletedAt       DateTime?                       @map("deleted_at")
+
+  memberships         OrganizationUser[]
+  sessions            Session[]
+  assignedTickets     Ticket[]            @relation("AssignedTickets")
+  authoredMessages    TicketMessage[]
+  savedFilters        SavedFilter[]
+  createdMacros       Macro[]
+  notifications       Notification[]
+
+  @@map("users")
+}
+
+enum EmailRoutingAction {
+  ignore
+  tag
+}
+
+model WebhookEndpoint {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String                                  @map("organization_id") @db.Char(36)
+  name           String   @db.VarChar(120)
+  url            String   @db.VarChar(500)
+  /// Eventos assinados — array de strings: ticket.created, ticket.updated, ticket.closed, csat_received, message.added, etc.
+  events         Json
+  /// Secret base64 pra assinar payload com HMAC-SHA256
+  secret         String   @db.VarChar(120)
+  enabled        Boolean  @default(true)
+  /// Métricas
+  deliveryCount  Int      @default(0)                    @map("delivery_count")
+  failureCount   Int      @default(0)                    @map("failure_count")
+  lastDeliveryAt DateTime?                               @map("last_delivery_at")
+  lastError      String?  @db.Text                       @map("last_error")
+  lastErrorAt    DateTime?                               @map("last_error_at")
+  createdById    String?                                 @map("created_by_id") @db.Char(36)
+  createdAt      DateTime @default(now())                @map("created_at")
+  updatedAt      DateTime @updatedAt                     @map("updated_at")
+  deletedAt      DateTime?                               @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, enabled, deletedAt])
+  @@map("webhook_endpoints")
+}
+
+model ApiKey {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String                                  @map("organization_id") @db.Char(36)
+  name           String   @db.VarChar(120)
+  /// SHA-256 hex da chave completa. A chave em si nunca é guardada.
+  hashedKey      String   @unique                        @map("hashed_key") @db.VarChar(80)
+  /// 8 últimos caracteres da chave pra exibição (ex: "...x9z2a3b1")
+  prefix         String   @db.VarChar(20)
+  /// Lista de scopes — tickets:read, tickets:write, requesters:read, etc.
+  scopes         Json     @default("[\"tickets:read\"]")
+  enabled        Boolean  @default(true)
+  lastUsedAt     DateTime?                               @map("last_used_at")
+  expiresAt      DateTime?                               @map("expires_at")
+  createdById    String?                                 @map("created_by_id") @db.Char(36)
+  createdAt      DateTime @default(now())                @map("created_at")
+  updatedAt      DateTime @updatedAt                     @map("updated_at")
+  revokedAt      DateTime?                               @map("revoked_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, enabled, revokedAt])
+  @@map("api_keys")
+}
+
+enum KbStatus {
+  draft
+  published
+  archived
+}
+
+model KbArticle {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String                                  @map("organization_id") @db.Char(36)
+  slug           String   @db.VarChar(120)
+  title          String   @db.VarChar(200)
+  /// Resumo curto (vai no preview de busca e sugestão)
+  excerpt        String?  @db.VarChar(500)
+  /// Conteúdo markdown
+  content        String   @db.MediumText
+  category       String?  @db.VarChar(80)
+  /// Tags livres separadas por espaço, pra busca/categorização
+  tags           String?  @db.VarChar(500)
+  status         KbStatus @default(draft)
+  /// Idioma — pt-BR por default
+  locale         String   @default("pt-BR")            @db.VarChar(10)
+  viewCount      Int      @default(0)                    @map("view_count")
+  helpfulYes     Int      @default(0)                    @map("helpful_yes")
+  helpfulNo      Int      @default(0)                    @map("helpful_no")
+  publishedAt    DateTime?                               @map("published_at")
+  createdById    String?                                 @map("created_by_id") @db.Char(36)
+  createdAt      DateTime @default(now())                @map("created_at")
+  updatedAt      DateTime @updatedAt                     @map("updated_at")
+  deletedAt      DateTime?                               @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, status, deletedAt])
+  @@fulltext([title, excerpt, content, tags])
+  @@map("kb_articles")
+}
+
+enum NotificationKind {
+  mention
+  assigned
+  reply
+  sla_breach
+}
+
+model Notification {
+  id             String           @id @default(uuid()) @db.Char(36)
+  organizationId String                                          @map("organization_id") @db.Char(36)
+  userId         String                                          @map("user_id") @db.Char(36)
+  kind           NotificationKind
+  title          String           @db.VarChar(200)
+  body           String?          @db.VarChar(1000)
+  link           String?          @db.VarChar(500)
+  /// Quem disparou (autor da nota, atribuidor, etc.)
+  actorUserId    String?                                         @map("actor_user_id") @db.Char(36)
+  /// Referência opcional ao recurso (ticket id)
+  resourceType   String?          @db.VarChar(40)                @map("resource_type")
+  resourceId     String?          @db.Char(36)                   @map("resource_id")
+  readAt         DateTime?                                       @map("read_at")
+  createdAt      DateTime         @default(now())                @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("notifications")
+}
+
+model CsatSurvey {
+  id              String    @id @default(uuid()) @db.Char(36)
+  organizationId  String                              @map("organization_id") @db.Char(36)
+  ticketId        String                              @map("ticket_id") @db.Char(36)
+  requesterEmail  String                              @map("requester_email") @db.VarChar(200)
+  /// Token único e curto pro link público. HMAC dentro.
+  token           String    @unique                   @db.VarChar(80)
+  rating          Int?      // 1-5, null enquanto não respondida
+  comment         String?   @db.Text
+  sentAt          DateTime  @default(now())           @map("sent_at")
+  submittedAt     DateTime?                           @map("submitted_at")
+  ipAddress       String?                             @map("ip_address") @db.VarChar(45)
+  createdAt       DateTime  @default(now())           @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  ticket       Ticket       @relation(fields: [ticketId], references: [id])
+
+  @@index([organizationId, submittedAt])
+  @@index([ticketId])
+  @@map("csat_surveys")
+}
+
+model Macro {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String                              @map("organization_id") @db.Char(36)
+  name           String   @db.VarChar(120)
+  shortcut       String?  @db.VarChar(40)            // ex: ":greeting"
+  body           String   @db.Text                   // suporta {{vars}}
+  actions        Json     @default("[]")             // mesmas Action[] das regras
+  enabled        Boolean  @default(true)
+  usageCount     Int      @default(0)                @map("usage_count")
+  lastUsedAt     DateTime?                           @map("last_used_at")
+  createdById    String?                             @map("created_by_id") @db.Char(36)
+  createdAt      DateTime @default(now())            @map("created_at")
+  updatedAt      DateTime @updatedAt                 @map("updated_at")
+  deletedAt      DateTime?                           @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  createdBy    User?        @relation(fields: [createdById], references: [id])
+
+  @@unique([organizationId, shortcut])
+  @@index([organizationId, enabled, deletedAt])
+  @@map("macros")
+}
+
+enum ImapSmtpStatus {
+  active
+  paused
+  error
+}
+
+model ImapSmtpConnection {
+  id              String         @id @default(uuid()) @db.Char(36)
+  organizationId  String                                              @map("organization_id") @db.Char(36)
+  displayName     String                                              @map("display_name") @db.VarChar(120)
+  emailAddress    String                                              @map("email_address") @db.VarChar(200)
+
+  imapHost        String                                              @map("imap_host") @db.VarChar(200)
+  imapPort        Int                                                 @map("imap_port")
+  imapSecurity    String                                              @map("imap_security") @db.VarChar(20) // ssl | starttls | none
+  imapUser        String                                              @map("imap_user") @db.VarChar(200)
+  imapPasswordEnc Json                                                @map("imap_password_enc")
+  imapFolder      String         @default("INBOX")                    @map("imap_folder") @db.VarChar(80)
+
+  smtpHost        String                                              @map("smtp_host") @db.VarChar(200)
+  smtpPort        Int                                                 @map("smtp_port")
+  smtpSecurity    String                                              @map("smtp_security") @db.VarChar(20) // ssl | starttls | none
+  smtpUser        String                                              @map("smtp_user") @db.VarChar(200)
+  smtpPasswordEnc Json                                                @map("smtp_password_enc")
+  smtpFromName    String?                                             @map("smtp_from_name") @db.VarChar(120)
+
+  status          ImapSmtpStatus @default(active)
+  lastSyncedAt    DateTime?                                           @map("last_synced_at")
+  lastError       String?        @db.Text                             @map("last_error")
+  lastErrorAt     DateTime?                                           @map("last_error_at")
+  lastUid         Int?                                                @map("last_uid")
+  lastUidValidity BigInt?                                             @map("last_uid_validity")
+
+  createdAt       DateTime       @default(now())                      @map("created_at")
+  updatedAt       DateTime       @updatedAt                           @map("updated_at")
+  deletedAt       DateTime?                                           @map("deleted_at")
+
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, status, deletedAt])
+  @@map("imap_smtp_connections")
+}
+
+model EmailRoutingRule {
+  id             String              @id @default(uuid()) @db.Char(36)
+  organizationId String                                          @map("organization_id") @db.Char(36)
+  pattern        String              @db.VarChar(255)
+  action         EmailRoutingAction
+  tagName        String?             @db.VarChar(60)             @map("tag_name")
+  enabled        Boolean             @default(true)
+  note           String?             @db.VarChar(500)
+  matchCount     Int                 @default(0)                 @map("match_count")
+  lastMatchedAt  DateTime?                                       @map("last_matched_at")
+  createdById    String?                                         @map("created_by_id") @db.Char(36)
+  createdAt      DateTime            @default(now())             @map("created_at")
+  updatedAt      DateTime            @updatedAt                  @map("updated_at")
+  deletedAt      DateTime?                                       @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, enabled, deletedAt])
+  @@map("email_routing_rules")
+}
+
+model SavedFilter {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String                                  @map("organization_id") @db.Char(36)
+  userId         String?                                 @map("user_id") @db.Char(36)
+  resource       String   @db.VarChar(40)
+  name           String   @db.VarChar(120)
+  params         Json
+  createdAt      DateTime @default(now())                @map("created_at")
+  updatedAt      DateTime @updatedAt                     @map("updated_at")
+  deletedAt      DateTime?                               @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, resource, userId])
+  @@map("saved_filters")
+}
+
+model OrganizationUser {
+  id             String           @id @default(uuid()) @db.Char(36)
+  organizationId String                                                @map("organization_id") @db.Char(36)
+  userId         String                                                @map("user_id") @db.Char(36)
+  role           OrgRole
+  invitedById    String?                                               @map("invited_by_id") @db.Char(36)
+  invitedAt      DateTime?                                             @map("invited_at")
+  joinedAt       DateTime?                                             @map("joined_at")
+  status         MembershipStatus @default(active)
+  createdAt      DateTime         @default(now())                      @map("created_at")
+  updatedAt      DateTime         @updatedAt                           @map("updated_at")
+
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+  user           User             @relation(fields: [userId], references: [id])
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("organization_users")
+}
+
+enum OrgRole {
+  owner
+  admin
+  supervisor
+  agent
+  viewer
+}
+
+enum MembershipStatus {
+  invited
+  active
+  suspended
+}
+
+model Session {
+  id         String    @id @default(uuid()) @db.Char(36)
+  userId     String                                @map("user_id") @db.Char(36)
+  tokenHash  String    @unique                    @map("token_hash")
+  ip         String?
+  userAgent  String?                              @map("user_agent")
+  createdAt  DateTime  @default(now())            @map("created_at")
+  lastSeenAt DateTime  @default(now())            @map("last_seen_at")
+  expiresAt  DateTime                             @map("expires_at")
+  revokedAt  DateTime?                            @map("revoked_at")
+
+  user       User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// =========================
+// 2. Catálogos por organização
+// =========================
+
+model Team {
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String                                @map("organization_id") @db.Char(36)
+  name           String
+  createdAt      DateTime     @default(now())          @map("created_at")
+  updatedAt      DateTime     @updatedAt               @map("updated_at")
+  deletedAt      DateTime?                             @map("deleted_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  queues         Queue[]
+
+  @@unique([organizationId, name])
+  @@map("teams")
+}
+
+model Queue {
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String                                @map("organization_id") @db.Char(36)
+  teamId         String?                               @map("team_id") @db.Char(36)
+  name           String
+  slug           String
+  description    String?
+  isDefault      Boolean      @default(false)          @map("is_default")
+  createdAt      DateTime     @default(now())          @map("created_at")
+  updatedAt      DateTime     @updatedAt               @map("updated_at")
+  deletedAt      DateTime?                             @map("deleted_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  team           Team?        @relation(fields: [teamId], references: [id])
+  tickets        Ticket[]
+
+  @@unique([organizationId, slug])
+  @@map("queues")
+}
+
+model Tag {
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String                                @map("organization_id") @db.Char(36)
+  name           String
+  color          String?
+  createdAt      DateTime     @default(now())          @map("created_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  tickets        TicketTag[]
+
+  @@unique([organizationId, name])
+  @@map("tags")
+}
+
+model TicketTag {
+  ticketId String @map("ticket_id") @db.Char(36)
+  tagId    String @map("tag_id") @db.Char(36)
+  ticket   Ticket @relation(fields: [ticketId], references: [id])
+  tag      Tag    @relation(fields: [tagId], references: [id])
+
+  @@id([ticketId, tagId])
+  @@map("ticket_tags")
+}
+
+// =========================
+// 3. Requesters
+// =========================
+
+model Requester {
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String                                @map("organization_id") @db.Char(36)
+  email          String?
+  phone          String?
+  document       String?
+  name           String?
+  externalId     String?                               @map("external_id")
+  customFields   Json?                                 @map("custom_fields")
+  createdAt      DateTime     @default(now())          @map("created_at")
+  updatedAt      DateTime     @updatedAt               @map("updated_at")
+  deletedAt      DateTime?                             @map("deleted_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  tickets        Ticket[]
+
+  @@index([organizationId, email])
+  @@index([organizationId, document])
+  @@index([organizationId, externalId])
+  @@index([organizationId, phone])
+  @@map("requesters")
+}
+
+// =========================
+// 4. Tickets
+// =========================
+
+model Ticket {
+  id                  String         @id @default(uuid()) @db.Char(36)
+  organizationId      String                                       @map("organization_id") @db.Char(36)
+  code                String
+  requesterId         String                                       @map("requester_id") @db.Char(36)
+  assigneeId          String?                                      @map("assignee_id") @db.Char(36)
+  queueId             String?                                      @map("queue_id") @db.Char(36)
+  subject             String
+  description         String?        @db.Text
+  origin              TicketOrigin
+  status              TicketStatus   @default(new)
+  priority            TicketPriority @default(normal)
+  customFields        Json?                                        @map("custom_fields")
+
+  firstResponseAt     DateTime?                                    @map("first_response_at")
+  resolvedAt          DateTime?                                    @map("resolved_at")
+  closedAt            DateTime?                                    @map("closed_at")
+  slaPolicyId         String?                                      @map("sla_policy_id") @db.Char(36)
+  slaFirstResponseDue DateTime?                                    @map("sla_first_response_due")
+  slaResolutionDue    DateTime?                                    @map("sla_resolution_due")
+  slaBreachedFirst    Boolean        @default(false)               @map("sla_breached_first")
+  slaBreachedRes      Boolean        @default(false)               @map("sla_breached_res")
+
+  createdAt           DateTime       @default(now())               @map("created_at")
+  updatedAt           DateTime       @updatedAt                    @map("updated_at")
+  deletedAt           DateTime?                                    @map("deleted_at")
+
+  organization        Organization        @relation(fields: [organizationId], references: [id])
+  requester           Requester           @relation(fields: [requesterId], references: [id])
+  assignee            User?               @relation("AssignedTickets", fields: [assigneeId], references: [id])
+  queue               Queue?              @relation(fields: [queueId], references: [id])
+  slaPolicy           SlaPolicy?          @relation(fields: [slaPolicyId], references: [id])
+
+  messages            TicketMessage[]
+  attachments         TicketAttachment[]
+  events              TicketEvent[]
+  enrichments         TicketEnrichment[]
+  tags                TicketTag[]
+  formSubmissions     FormSubmission[]
+  apiIntegrationRuns  ApiIntegrationRun[]
+  csatSurveys         CsatSurvey[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@index([organizationId, queueId, status])
+  @@index([organizationId, assigneeId, status])
+  @@index([organizationId, requesterId])
+  @@map("tickets")
+}
+
+enum TicketStatus {
+  new
+  open
+  in_progress
+  pending_customer
+  pending_third_party
+  resolved
+  closed
+  cancelled
+}
+
+enum TicketPriority {
+  low
+  normal
+  high
+  urgent
+  critical
+}
+
+enum TicketOrigin {
+  gmail
+  imap
+  whatsapp
+  form
+  api
+  manual
+}
+
+model TicketMessage {
+  id              String         @id @default(uuid()) @db.Char(36)
+  organizationId  String                                       @map("organization_id") @db.Char(36)
+  ticketId        String                                       @map("ticket_id") @db.Char(36)
+  type            MessageType
+  authorUserId    String?                                      @map("author_user_id") @db.Char(36)
+  authorRequester String?                                      @map("author_requester_id") @db.Char(36)
+  bodyHtml        String?        @db.LongText                  @map("body_html")
+  bodyText        String?        @db.LongText                  @map("body_text")
+
+  channel         MessageChannel?                              @map("channel")
+
+  emailMessageId  String?                                      @map("email_message_id") @db.VarChar(512)
+  emailInReplyTo  String?                                      @map("email_in_reply_to") @db.VarChar(512)
+  emailReferences String?        @db.Text                      @map("email_references")
+  emailFrom       String?                                      @map("email_from")
+  emailTo         String?        @db.Text                      @map("email_to")
+  emailCc         String?        @db.Text                      @map("email_cc")
+  emailBcc        String?        @db.Text                      @map("email_bcc")
+  emailDirection  EmailDirection?                              @map("email_direction")
+
+  // WhatsApp metadata
+  waMessageId     String?                                      @map("wa_message_id") @db.VarChar(255)
+  waFrom          String?                                      @map("wa_from") @db.VarChar(40)
+  waTo            String?                                      @map("wa_to") @db.VarChar(40)
+  waContextId     String?                                      @map("wa_context_id") @db.VarChar(255)
+  waConnectionId  String?                                      @map("wa_connection_id") @db.Char(36)
+
+  deliveryStatus  DeliveryStatus @default(pending)             @map("delivery_status")
+  deliveryError   String?        @db.Text                      @map("delivery_error")
+  sentAt          DateTime?                                    @map("sent_at")
+
+  createdAt       DateTime       @default(now())               @map("created_at")
+  updatedAt       DateTime       @updatedAt                    @map("updated_at")
+
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+  ticket          Ticket         @relation(fields: [ticketId], references: [id])
+  authorUser      User?          @relation(fields: [authorUserId], references: [id])
+  attachments     TicketAttachment[]
+
+  @@index([organizationId, ticketId, createdAt])
+  @@index([emailMessageId])
+  @@index([waMessageId])
+  @@map("ticket_messages")
+}
+
+enum MessageType {
+  public_reply
+  internal_note
+  incoming_email
+  incoming_whatsapp
+  outgoing_whatsapp
+  system_event
+}
+
+enum MessageChannel {
+  email
+  whatsapp
+  form
+  manual
+  internal
+  system
+}
+
+enum EmailDirection {
+  inbound
+  outbound
+}
+
+enum DeliveryStatus {
+  pending
+  sent
+  failed
+  not_applicable
+}
+
+model TicketAttachment {
+  id              String         @id @default(uuid()) @db.Char(36)
+  organizationId  String                                       @map("organization_id") @db.Char(36)
+  ticketId        String                                       @map("ticket_id") @db.Char(36)
+  messageId       String?                                      @map("message_id") @db.Char(36)
+  filename        String
+  contentType     String                                       @map("content_type")
+  sizeBytes       Int                                          @map("size_bytes")
+  storageKey      String                                       @map("storage_key")
+  uploadedById    String?                                      @map("uploaded_by_id") @db.Char(36)
+  createdAt       DateTime       @default(now())               @map("created_at")
+
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+  ticket          Ticket         @relation(fields: [ticketId], references: [id])
+  message         TicketMessage? @relation(fields: [messageId], references: [id])
+
+  @@index([organizationId, ticketId])
+  @@map("ticket_attachments")
+}
+
+model TicketEvent {
+  id              String          @id @default(uuid()) @db.Char(36)
+  organizationId  String                                        @map("organization_id") @db.Char(36)
+  ticketId        String                                        @map("ticket_id") @db.Char(36)
+  actorUserId     String?                                       @map("actor_user_id") @db.Char(36)
+  type            TicketEventType
+  payload         Json
+  createdAt       DateTime        @default(now())               @map("created_at")
+
+  organization    Organization    @relation(fields: [organizationId], references: [id])
+  ticket          Ticket          @relation(fields: [ticketId], references: [id])
+
+  @@index([organizationId, ticketId, createdAt])
+  @@map("ticket_events")
+}
+
+enum TicketEventType {
+  created
+  status_changed
+  priority_changed
+  assignee_changed
+  queue_changed
+  tag_added
+  tag_removed
+  message_added
+  enrichment_completed
+  enrichment_failed
+  rule_applied
+  sla_breached
+  custom_field_changed
+  csat_received
+}
+
+// =========================
+// 5. Gmail
+// =========================
+
+model GmailConnection {
+  id                 String          @id @default(uuid()) @db.Char(36)
+  organizationId     String                                          @map("organization_id") @db.Char(36)
+  emailAddress       String                                          @map("email_address")
+  refreshTokenEnc    String          @db.Text                        @map("refresh_token_enc")
+  refreshTokenNonce  String                                          @map("refresh_token_nonce")
+  scopes             String          @db.Text
+  status             GmailConnStatus @default(active)
+  historyId          String?                                         @map("history_id")
+  lastSyncedAt       DateTime?                                       @map("last_synced_at")
+  lastErrorAt        DateTime?                                       @map("last_error_at")
+  lastError          String?         @db.Text                        @map("last_error")
+  inboundFilterRules Json?                                           @map("inbound_filter_rules")
+
+  createdAt          DateTime        @default(now())                 @map("created_at")
+  updatedAt          DateTime        @updatedAt                      @map("updated_at")
+  deletedAt          DateTime?                                       @map("deleted_at")
+
+  organization       Organization    @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, emailAddress])
+  @@map("gmail_connections")
+}
+
+enum GmailConnStatus {
+  active
+  reauth_required
+  disabled
+}
+
+// =========================
+// 5b. WhatsApp (Meta Cloud API)
+// =========================
+
+model WhatsappConnection {
+  id                   String              @id @default(uuid()) @db.Char(36)
+  organizationId       String                                             @map("organization_id") @db.Char(36)
+  displayPhoneNumber   String                                             @map("display_phone_number") @db.VarChar(40)
+  phoneNumberId        String                                             @map("phone_number_id") @db.VarChar(64)
+  businessAccountId    String                                             @map("business_account_id") @db.VarChar(64)
+  accessTokenEnc       String              @db.Text                       @map("access_token_enc")
+  accessTokenNonce     String                                             @map("access_token_nonce")
+  appSecretEnc         String?             @db.Text                       @map("app_secret_enc")
+  appSecretNonce       String?                                            @map("app_secret_nonce")
+  webhookVerifyToken   String                                             @map("webhook_verify_token") @db.VarChar(128)
+  status               WhatsappConnStatus  @default(active)
+  lastReceivedAt       DateTime?                                          @map("last_received_at")
+  lastError            String?             @db.Text                       @map("last_error")
+  lastErrorAt          DateTime?                                          @map("last_error_at")
+  inboundFilterRules   Json?                                              @map("inbound_filter_rules")
+
+  createdAt            DateTime            @default(now())                @map("created_at")
+  updatedAt            DateTime            @updatedAt                     @map("updated_at")
+  deletedAt            DateTime?                                          @map("deleted_at")
+
+  organization         Organization        @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, phoneNumberId])
+  @@map("whatsapp_connections")
+}
+
+enum WhatsappConnStatus {
+  active
+  disabled
+  error
+}
+
+// =========================
+// 6. Forms
+// =========================
+
+model Form {
+  id               String           @id @default(uuid()) @db.Char(36)
+  organizationId   String                                          @map("organization_id") @db.Char(36)
+  slug             String
+  name             String
+  description      String?          @db.Text
+  isPublished      Boolean          @default(false)                @map("is_published")
+  defaultQueueId   String?                                         @map("default_queue_id") @db.Char(36)
+  defaultPriority  TicketPriority   @default(normal)               @map("default_priority")
+  successMessage   String?          @db.Text                       @map("success_message")
+  honeypotField    String?                                         @map("honeypot_field")
+  recaptchaSiteKey String?                                         @map("recaptcha_site_key")
+  createdAt        DateTime         @default(now())                @map("created_at")
+  updatedAt        DateTime         @updatedAt                     @map("updated_at")
+  deletedAt        DateTime?                                       @map("deleted_at")
+
+  organization     Organization     @relation(fields: [organizationId], references: [id])
+  fields           FormField[]
+  submissions      FormSubmission[]
+
+  @@unique([organizationId, slug])
+  @@map("forms")
+}
+
+model FormField {
+  id             String        @id @default(uuid()) @db.Char(36)
+  organizationId String                                          @map("organization_id") @db.Char(36)
+  formId         String                                          @map("form_id") @db.Char(36)
+  key            String
+  label          String
+  type           FormFieldType
+  placeholder    String?
+  helpText       String?       @db.Text                          @map("help_text")
+  required       Boolean       @default(false)
+  position       Int
+  options        Json?
+  validation     Json?
+  mapsTo         String?                                         @map("maps_to")
+  visibleWhen    Json?                                           @map("visible_when")
+
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  form           Form          @relation(fields: [formId], references: [id])
+
+  @@unique([formId, key])
+  @@index([organizationId, formId])
+  @@map("form_fields")
+}
+
+enum FormFieldType {
+  text
+  textarea
+  email
+  phone
+  document
+  number
+  currency
+  date
+  select
+  multiselect
+  checkbox
+  file
+  url
+  hidden
+}
+
+model FormSubmission {
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String                                          @map("organization_id") @db.Char(36)
+  formId         String                                          @map("form_id") @db.Char(36)
+  ticketId       String?                                         @map("ticket_id") @db.Char(36)
+  rawData        Json                                            @map("raw_data")
+  ip             String?
+  userAgent      String?                                         @map("user_agent")
+  createdAt      DateTime     @default(now())                    @map("created_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  form           Form         @relation(fields: [formId], references: [id])
+  ticket         Ticket?      @relation(fields: [ticketId], references: [id])
+
+  @@index([organizationId, formId, createdAt])
+  @@map("form_submissions")
+}
+
+// =========================
+// 7. Integrações HTTP
+// =========================
+
+model ApiIntegration {
+  id              String         @id @default(uuid()) @db.Char(36)
+  organizationId  String                                       @map("organization_id") @db.Char(36)
+  name            String
+  description     String?        @db.Text
+  enabled         Boolean        @default(true)
+
+  triggerEvents   Json                                         @map("trigger_events")
+  conditions      Json?
+  runOrder        Int            @default(0)                   @map("run_order")
+
+  method          HttpMethod
+  url             String         @db.Text
+  headers         Json?
+  queryParams     Json?                                        @map("query_params")
+  bodyTemplate    Json?                                        @map("body_template")
+
+  authType        AuthType                                     @map("auth_type")
+  authConfigEnc   String?        @db.Text                      @map("auth_config_enc")
+  authConfigNonce String?                                      @map("auth_config_nonce")
+
+  timeoutMs       Int            @default(10000)               @map("timeout_ms")
+  maxRetries      Int            @default(2)                   @map("max_retries")
+  cacheTtlSeconds Int            @default(0)                   @map("cache_ttl_seconds")
+
+  responseMapping    Json                                      @map("response_mapping")
+  /**
+   * Caminho (alias do responseMapping) que **precisa** vir preenchido para
+   * considerar match real. Se vazio depois do mapping, run vira `skipped`
+   * (não salva enrichment, não dispara `ticket_enriched`).
+   * Ex.: "partner.id" — protege contra APIs que devolvem 200+stub genérico.
+   */
+  requiredMatchField String?       @db.VarChar(200)              @map("required_match_field")
+  failurePolicy      FailurePolicy @default(skip)                @map("failure_policy")
+
+  createdAt       DateTime       @default(now())               @map("created_at")
+  updatedAt       DateTime       @updatedAt                    @map("updated_at")
+  deletedAt       DateTime?                                    @map("deleted_at")
+
+  organization    Organization        @relation(fields: [organizationId], references: [id])
+  runs            ApiIntegrationRun[]
+  enrichments     TicketEnrichment[]
+
+  @@index([organizationId, enabled])
+  @@map("api_integrations")
+}
+
+enum HttpMethod {
+  GET
+  POST
+  PUT
+  PATCH
+}
+
+enum AuthType {
+  none
+  api_key_header
+  api_key_query
+  bearer
+  basic
+  custom_headers
+}
+
+enum FailurePolicy {
+  skip
+  retry_later
+  flag_ticket
+}
+
+model ApiIntegrationRun {
+  id              String         @id @default(uuid()) @db.Char(36)
+  organizationId  String                                       @map("organization_id") @db.Char(36)
+  integrationId   String                                       @map("integration_id") @db.Char(36)
+  ticketId        String?                                      @map("ticket_id") @db.Char(36)
+  triggeredBy     String                                       @map("triggered_by")
+  triggeredByUser String?                                      @map("triggered_by_user") @db.Char(36)
+  status          RunStatus
+
+  requestUrl      String         @db.Text                      @map("request_url")
+  requestMethod   String                                       @map("request_method")
+  requestHeaders  Json?                                        @map("request_headers")
+  requestBody     Json?                                        @map("request_body")
+  responseStatus  Int?                                         @map("response_status")
+  responseHeaders Json?                                        @map("response_headers")
+  responseBody    Json?                                        @map("response_body")
+  mappedData      Json?                                        @map("mapped_data")
+  errorMessage    String?        @db.Text                      @map("error_message")
+  durationMs      Int?                                         @map("duration_ms")
+  attempt         Int            @default(1)
+
+  startedAt       DateTime       @default(now())               @map("started_at")
+  finishedAt      DateTime?                                    @map("finished_at")
+
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+  integration     ApiIntegration @relation(fields: [integrationId], references: [id])
+  ticket          Ticket?        @relation(fields: [ticketId], references: [id])
+
+  @@index([organizationId, integrationId, startedAt])
+  @@index([organizationId, ticketId])
+  @@map("api_integration_runs")
+}
+
+enum RunStatus {
+  pending
+  running
+  succeeded
+  failed
+  skipped
+}
+
+model TicketEnrichment {
+  id              String         @id @default(uuid()) @db.Char(36)
+  organizationId  String                                       @map("organization_id") @db.Char(36)
+  ticketId        String                                       @map("ticket_id") @db.Char(36)
+  integrationId   String                                       @map("integration_id") @db.Char(36)
+  runId           String                                       @map("run_id") @db.Char(36)
+  data            Json
+  isCurrent       Boolean        @default(true)                @map("is_current")
+  createdAt       DateTime       @default(now())               @map("created_at")
+
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+  ticket          Ticket         @relation(fields: [ticketId], references: [id])
+  integration     ApiIntegration @relation(fields: [integrationId], references: [id])
+
+  @@index([organizationId, ticketId, isCurrent])
+  @@index([organizationId, ticketId, integrationId, createdAt])
+  @@map("ticket_enrichments")
+}
+
+// =========================
+// 8. Painel Inteligente (layouts)
+// =========================
+
+model TicketLayout {
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String                                          @map("organization_id") @db.Char(36)
+  name           String
+  scope          LayoutScope  @default(organization)
+  scopeRef       String?                                         @map("scope_ref")
+  version        Int          @default(1)
+  isDefault      Boolean      @default(false)                    @map("is_default")
+  config         Json
+  createdAt      DateTime     @default(now())                    @map("created_at")
+  updatedAt      DateTime     @updatedAt                         @map("updated_at")
+  createdById    String?                                         @map("created_by_id") @db.Char(36)
+  deletedAt      DateTime?                                       @map("deleted_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, isDefault])
+  @@map("ticket_layouts")
+}
+
+enum LayoutScope {
+  organization
+  queue
+}
+
+// =========================
+// 9. Automation rules
+// =========================
+
+model AutomationRule {
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String                                          @map("organization_id") @db.Char(36)
+  name           String
+  enabled        Boolean      @default(true)
+  trigger        RuleTrigger
+  conditions     Json
+  actions        Json
+  runOrder       Int          @default(0)                        @map("run_order")
+  stopAfterMatch Boolean      @default(false)                    @map("stop_after_match")
+  createdAt      DateTime     @default(now())                    @map("created_at")
+  updatedAt      DateTime     @updatedAt                         @map("updated_at")
+  deletedAt      DateTime?                                       @map("deleted_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, enabled, trigger])
+  @@map("automation_rules")
+}
+
+enum RuleTrigger {
+  ticket_created
+  ticket_updated
+  ticket_enriched
+  email_received
+  form_submitted
+}
+
+// =========================
+// 10. SLA
+// =========================
+
+model SlaPolicy {
+  id                String       @id @default(uuid()) @db.Char(36)
+  organizationId    String                                          @map("organization_id") @db.Char(36)
+  name              String
+  description       String?
+  appliesTo         Json                                            @map("applies_to")
+  firstResponseMins Int                                             @map("first_response_mins")
+  resolutionMins    Int                                             @map("resolution_mins")
+  businessHours     Json?                                           @map("business_hours")
+  timezone          String       @default("America/Sao_Paulo")
+  createdAt         DateTime     @default(now())                    @map("created_at")
+  updatedAt         DateTime     @updatedAt                         @map("updated_at")
+  deletedAt         DateTime?                                       @map("deleted_at")
+
+  organization      Organization @relation(fields: [organizationId], references: [id])
+  tickets           Ticket[]
+
+  @@map("sla_policies")
+}
+
+// =========================
+// 11. Jobs (fila in-Next)
+// =========================
+
+model Job {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String?                                          @map("organization_id") @db.Char(36)
+  type           String
+  dedupKey       String?                                          @map("dedup_key") @db.VarChar(191)
+  payload        Json
+  status         JobStatus @default(pending)
+  priority       Int       @default(0)
+  runAt          DateTime  @default(now())                        @map("run_at")
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5)                            @map("max_attempts")
+  lockedAt       DateTime?                                        @map("locked_at")
+  lockedBy       String?                                          @map("locked_by")
+  lastError      String?   @db.Text                               @map("last_error")
+  createdAt      DateTime  @default(now())                        @map("created_at")
+  updatedAt      DateTime  @updatedAt                             @map("updated_at")
+  completedAt    DateTime?                                        @map("completed_at")
+
+  @@index([status, runAt, priority])
+  @@index([organizationId, type])
+  @@unique([type, dedupKey])
+  @@map("jobs")
+}
+
+enum JobStatus {
+  pending
+  running
+  succeeded
+  failed
+  dead
+}
+
+// =========================
+// 12. Auditoria
+// =========================
+
+model AuditLog {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String?                                          @map("organization_id") @db.Char(36)
+  actorUserId    String?                                          @map("actor_user_id") @db.Char(36)
+  action         String
+  resourceType   String?                                          @map("resource_type")
+  resourceId     String?                                          @map("resource_id") @db.Char(36)
+  diff           Json?
+  ip             String?
+  userAgent      String?                                          @map("user_agent")
+  createdAt      DateTime @default(now())                         @map("created_at")
+
+  @@index([organizationId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([resourceType, resourceId])
+  @@map("audit_logs")
+}
+
+// =========================
+// 13. Rate limit (sliding window simples sem Redis)
+// =========================
+
+model RateLimitHit {
+  id        String   @id @default(uuid()) @db.Char(36)
+  bucket    String   @db.VarChar(191)
+  hitAt     DateTime @default(now()) @map("hit_at")
+
+  @@index([bucket, hitAt])
+  @@map("rate_limit_hits")
+}

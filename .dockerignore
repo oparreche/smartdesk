@@ -1,0 +1,49 @@
+# Build artifacts
+.next
+.next/dev
+node_modules
+*.log
+
+# Dev files
+.env
+.env.local
+.env.development
+.env.test
+
+# Git
+.git
+.gitignore
+
+# Docs
+README.md
+DEPLOY.md
+ONBOARDING.md
+AGENTS.md
+CLAUDE.md
+
+# Screenshots e prints de teste
+*.png
+*.jpg
+*.jpeg
+
+# Tests
+**/__tests__
+**/*.test.ts
+**/*.test.tsx
+vitest.config.*
+
+# IDE
+.vscode
+.idea
+.cursor
+
+# Playwright
+.playwright-mcp
+playwright-report
+test-results
+
+# Misc
+.DS_Store
+*.swp
+*.bak
+*~

@@ -1,0 +1,360 @@
+@import "tailwindcss";
+
+/*
+ * SmartDesk — Editorial Workspace
+ *
+ * Direção estética:
+ *  - Fundo cream off-white (não branco neutro) — calor + sofisticação.
+ *  - Navy profundo para primary (institucional, anti-bootstrap).
+ *  - Coral vivo apenas para CTAs/críticos — accent escasso outperforma palette difusa.
+ *  - Tipografia híbrida: serif (Fraunces) em momentos editoriais, sans (Geist) no corpo,
+ *    mono (Geist Mono) para códigos de ticket / dados estruturais.
+ *  - Hairline borders + raio pequeno (4px) — densidade IDE com refinamento editorial.
+ */
+
+:root {
+  /* Surfaces — bg mais escuro que cards (eleva conteúdo branco) */
+  --background: #e8e5d8;            /* cream warm gray — bg geral */
+  --surface: #faf8f1;               /* cards (sutilmente diferenciado) */
+  --surface-raised: #ffffff;        /* modals, popovers, inputs em foco */
+  --surface-sunken: #ddd9c8;        /* table headers, code blocks */
+
+  /* Ink */
+  --foreground: #15171c;            /* near-black with hint of blue */
+  --foreground-secondary: #3a3d44;
+  --muted: #ddd9c8;
+  --muted-foreground: #65676f;
+  --muted-foreground-strong: #4a4c54;
+
+  /* Lines */
+  --border: #cfccbc;                /* mais visível sobre cream */
+  --border-strong: #b6b2a2;
+  --border-subtle: #d8d4c4;
+
+  /* Dark surfaces (sidebar) */
+  --dark-bg: #14171c;               /* sidebar primária */
+  --dark-bg-raised: #1c2025;        /* hover/active */
+  --dark-foreground: #e8e5d8;       /* texto sidebar */
+  --dark-foreground-muted: #8b8e95;
+  --dark-border: rgba(255, 255, 255, 0.08);
+
+  /* Brand */
+  --primary: #1c2541;               /* deep navy */
+  --primary-foreground: #f6f4ee;
+  --primary-soft: #e8eaf2;          /* navy/10 for chips */
+
+  /* Accent */
+  --accent: #d33f49;                /* coral red — CTAs críticos */
+  --accent-foreground: #fbfaf5;
+  --accent-soft: #fbe9ea;
+
+  /* Semantic */
+  --success: #2f8d6e;
+  --success-soft: #e3f1ea;
+  --warning: #c08416;
+  --warning-soft: #faf0d8;
+  --destructive: #9c1f24;
+  --destructive-foreground: #fbfaf5;
+  --destructive-soft: #fbe0e1;
+  --info: #2c5b8b;
+  --info-soft: #e3ecf5;
+
+  /* Effects */
+  --shadow-xs: 0 1px 0 rgba(20, 22, 27, 0.04), 0 1px 2px rgba(20, 22, 27, 0.04);
+  --shadow-sm: 0 1px 2px rgba(20, 22, 27, 0.06), 0 1px 1px rgba(20, 22, 27, 0.03);
+  --shadow-md: 0 4px 12px -2px rgba(20, 22, 27, 0.08), 0 2px 4px rgba(20, 22, 27, 0.04);
+  --shadow-lg: 0 12px 32px -8px rgba(20, 22, 27, 0.18), 0 6px 12px rgba(20, 22, 27, 0.06);
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-foreground: var(--foreground);
+  --color-foreground-secondary: var(--foreground-secondary);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted-foreground-strong: var(--muted-foreground-strong);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-subtle: var(--border-subtle);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-dark-bg: var(--dark-bg);
+  --color-dark-bg-raised: var(--dark-bg-raised);
+  --color-dark-foreground: var(--dark-foreground);
+  --color-dark-foreground-muted: var(--dark-foreground-muted);
+  --color-dark-border: var(--dark-border);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-fraunces);
+
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  background: var(--background);
+  color-scheme: light;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Editorial display typography */
+.font-display {
+  font-family: var(--font-display), Georgia, serif;
+  font-optical-sizing: auto;
+  letter-spacing: -0.02em;
+}
+
+.font-mono {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  font-feature-settings: 'cv11', 'ss03', 'zero';
+}
+
+/* Selection */
+::selection {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Focus refined */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* Scrollbars discretas */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid var(--background);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
+
+/* Detalhes editoriais */
+.divider-eyebrow {
+  display: inline-block;
+  font-size: 0.6875rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+/* Reveal stagger — opcional, aplicar com data-anim */
+@keyframes reveal-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+[data-anim="reveal"] {
+  animation: reveal-up 360ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+[data-anim="reveal"][data-delay="1"] { animation-delay: 60ms; }
+[data-anim="reveal"][data-delay="2"] { animation-delay: 120ms; }
+[data-anim="reveal"][data-delay="3"] { animation-delay: 180ms; }
+[data-anim="reveal"][data-delay="4"] { animation-delay: 240ms; }
+
+/* Botão padrão (utilitário pra reuso opcional) */
+.btn-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: background 150ms ease, transform 80ms ease, box-shadow 150ms ease;
+  box-shadow: var(--shadow-sm);
+}
+.btn-primary:hover { background: #14182f; box-shadow: var(--shadow-md); }
+.btn-primary:active { transform: translateY(1px); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.btn-ghost:hover { background: var(--muted); border-color: var(--border-strong); }
+
+/* Card padrão */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+}
+
+.card-raised {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Pill — status / priority */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+}
+.pill::before {
+  content: "";
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+/* Hairline decorativa */
+.hairline {
+  height: 1px;
+  background: var(--border);
+}
+
+/* Eyebrow + numeração com serif */
+.numeral-serif {
+  font-family: var(--font-display), Georgia, serif;
+  font-feature-settings: 'lnum', 'tnum';
+}
+
+/* Knowledge Base article rendering */
+.prose-kb {
+  color: var(--foreground);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+.prose-kb h2 {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 2.5rem 0 0.75rem;
+  line-height: 1.25;
+}
+.prose-kb h3 {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.125rem;
+  font-weight: 500;
+  margin: 1.75rem 0 0.5rem;
+}
+.prose-kb p {
+  margin: 0.75rem 0;
+}
+.prose-kb ul, .prose-kb ol {
+  margin: 0.75rem 0;
+  padding-left: 1.5rem;
+}
+.prose-kb ul { list-style: disc; }
+.prose-kb ol { list-style: decimal; }
+.prose-kb li { margin: 0.25rem 0; }
+.prose-kb a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.prose-kb code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.875em;
+  background: var(--muted);
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+}
+.prose-kb pre {
+  background: var(--muted);
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin: 1rem 0;
+}
+.prose-kb pre code {
+  background: none;
+  padding: 0;
+}
+.prose-kb blockquote {
+  border-left: 3px solid var(--border-strong);
+  margin: 1rem 0;
+  padding: 0.25rem 1rem;
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.prose-kb hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2rem 0;
+}
+.prose-kb img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 1rem 0;
+}
+.prose-kb table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.875rem;
+}
+.prose-kb th, .prose-kb td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.prose-kb th {
+  background: var(--surface-raised);
+  font-weight: 500;
+}

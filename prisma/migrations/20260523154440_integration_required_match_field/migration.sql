@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `api_integrations` ADD COLUMN `required_match_field` VARCHAR(200) NULL;
