@@ -57,14 +57,24 @@ const Env = z.object({
   GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
 });
 
-// Durante `next build` em containers (Dockerfile/CI) as envs vivem só em runtime —
-// SKIP_ENV_VALIDATION=1 permite o build coletar page data sem variáveis reais.
+// Durante `next build` em containers (Dockerfile/CI) as envs vivem só em runtime.
+// SKIP_ENV_VALIDATION=1 injeta placeholders para required fields para que os
+// defaults() do schema sejam aplicados (módulos como pino precisam de LOG_LEVEL).
 // Runtime ainda valida normalmente.
-const skip = process.env.SKIP_ENV_VALIDATION === '1';
+if (process.env.SKIP_ENV_VALIDATION === '1') {
+  process.env.APP_URL ??= 'http://placeholder.local';
+  process.env.DATABASE_URL ??= 'mysql://placeholder:x@localhost:3306/placeholder';
+  process.env.AUTH_SECRET ??= 'placeholder-build-only-secret-1234';
+  process.env.ENCRYPTION_KEY_BASE64 ??= Buffer.alloc(32).toString('base64');
+  process.env.CRON_SECRET ??= 'placeholder-build-only-cron-1234';
+  process.env.S3_ENDPOINT ??= 'http://placeholder.local';
+  process.env.S3_REGION ??= 'us-east-1';
+  process.env.S3_BUCKET ??= 'placeholder';
+  process.env.S3_ACCESS_KEY ??= 'placeholder';
+  process.env.S3_SECRET_KEY ??= 'placeholder';
+}
 
-const parsed = skip
-  ? { success: true as const, data: process.env as unknown as z.infer<typeof Env> }
-  : Env.safeParse(process.env);
+const parsed = Env.safeParse(process.env);
 
 if (!parsed.success) {
   console.error('Invalid environment variables:');
