@@ -4,6 +4,7 @@ import { env } from '@/src/lib/env';
 import { listConnections, buildConnectionView } from '@/src/services/whatsapp/setup';
 import { formatDateTime } from '@/src/lib/format';
 import { NewConnectionForm } from './new-connection-form';
+import { EditConnectionForm } from './edit-connection-form';
 import { disconnectWhatsappAction } from './actions';
 
 export const metadata = { title: 'WhatsApp — SmartDesk' };
@@ -120,15 +121,22 @@ export default async function WhatsappSettingsPage() {
                           </details>
                         </div>
                       </div>
-                      <form action={disconnectWhatsappAction}>
-                        <input type="hidden" name="id" value={c.id} />
-                        <button
-                          type="submit"
-                          className="rounded-sm border border-border bg-surface px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive-soft hover:text-destructive"
-                        >
-                          Desconectar
-                        </button>
-                      </form>
+                      <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        <EditConnectionForm
+                          id={c.id}
+                          tokenLast4={c.tokenLast4}
+                          hasAppSecret={c.hasAppSecret}
+                        />
+                        <form action={disconnectWhatsappAction}>
+                          <input type="hidden" name="id" value={c.id} />
+                          <button
+                            type="submit"
+                            className="rounded-sm border border-border bg-surface px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive-soft hover:text-destructive"
+                          >
+                            Desconectar
+                          </button>
+                        </form>
+                      </div>
                     </div>
                   </li>
                 ))}
