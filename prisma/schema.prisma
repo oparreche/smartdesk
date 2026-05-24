@@ -8,6 +8,10 @@
 
 generator client {
   provider = "prisma-client-js"
+  // Path explícito para o Docker multi-stage funcionar com pnpm.
+  // Sem isso, pnpm gera dentro de node_modules/.pnpm/@prisma+client@.../ e
+  // o stage runner não acha node_modules/.prisma/client.
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
