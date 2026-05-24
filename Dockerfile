@@ -56,16 +56,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-cert
 # Usuário non-root
 RUN groupadd -g 1001 nodejs && useradd -u 1001 -g nodejs -m -s /bin/bash nextjs
 
-# Copia o build standalone (inclui node_modules mínimo)
+# Copia o build standalone (server.js, .next, e parte traced de node_modules)
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-
-# Prisma — precisa do schema e engine no runtime pra rodar migrations
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
+
+# Sobrescreve o node_modules slim do standalone pelo tree completo do pnpm.
+# Sem isso, os symlinks pnpm (@prisma/* → .pnpm/...) ficam pendurados porque o
+# .pnpm/ não é copiado, e prisma CLI quebra com MODULE_NOT_FOUND no boot.
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 
 # Entrypoint: roda migrations antes do start
 COPY --chown=nextjs:nodejs docker/entrypoint.sh /entrypoint.sh
