@@ -20,7 +20,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   ]);
 
   return (
-    <div className="flex h-screen flex-1 overflow-hidden">
+    <div className="flex flex-1 overflow-hidden">
       <Sidebar role={ctx.role} collapsed={collapsed} />
       <div className="flex min-w-0 flex-1 flex-col">
         <DashboardHeader ctx={ctx} />
