@@ -6,6 +6,7 @@ import {
 } from '@/src/services/forms/submit';
 import { checkRateLimit } from '@/src/lib/rate-limit';
 import { logger } from '@/src/lib/logger';
+import { env } from '@/src/lib/env';
 
 export const runtime = 'nodejs';
 
@@ -15,8 +16,8 @@ function getClientIp(req: NextRequest): string | null {
   return req.headers.get('x-real-ip') || null;
 }
 
-function redirectTo(req: NextRequest, path: string, query: Record<string, string> = {}) {
-  const url = new URL(path, req.url);
+function redirectTo(_req: NextRequest, path: string, query: Record<string, string> = {}) {
+  const url = new URL(path, env.APP_URL);
   for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
   return NextResponse.redirect(url, { status: 303 });
 }

@@ -3,6 +3,7 @@ import { getOrgContext } from '@/src/lib/tenant';
 import { requirePermission } from '@/src/lib/permissions';
 import { buildAuthUrl } from '@/src/services/gmail/oauth';
 import { encodeState } from '@/src/lib/oauth-state';
+import { env } from '@/src/lib/env';
 
 export const runtime = 'nodejs';
 
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(url, { status: 302 });
   } catch (err) {
     const message = encodeURIComponent((err as Error).message);
-    return NextResponse.redirect(new URL(`/settings/gmail?error=${message}`, req.url));
+    return NextResponse.redirect(new URL(`/settings/gmail?error=${message}`, env.APP_URL));
   }
 }
 

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { handleCallback } from '@/src/services/gmail/oauth';
 import { decodeState } from '@/src/lib/oauth-state';
 import { logger } from '@/src/lib/logger';
+import { env } from '@/src/lib/env';
 
 export const runtime = 'nodejs';
 
@@ -13,15 +14,15 @@ export async function GET(req: NextRequest) {
 
   if (errorParam) {
     const m = encodeURIComponent(errorParam);
-    return NextResponse.redirect(new URL(`/settings/gmail?error=${m}`, req.url));
+    return NextResponse.redirect(new URL(`/settings/gmail?error=${m}`, env.APP_URL));
   }
   if (!code || !state) {
-    return NextResponse.redirect(new URL(`/settings/gmail?error=missing_code_or_state`, req.url));
+    return NextResponse.redirect(new URL(`/settings/gmail?error=missing_code_or_state`, env.APP_URL));
   }
 
   const payload = decodeState(state);
   if (!payload) {
-    return NextResponse.redirect(new URL(`/settings/gmail?error=invalid_state`, req.url));
+    return NextResponse.redirect(new URL(`/settings/gmail?error=invalid_state`, env.APP_URL));
   }
 
   try {
@@ -31,11 +32,11 @@ export async function GET(req: NextRequest) {
       code,
     });
     return NextResponse.redirect(
-      new URL(`/settings/gmail?connected=${encodeURIComponent(r.emailAddress)}`, req.url),
+      new URL(`/settings/gmail?connected=${encodeURIComponent(r.emailAddress)}`, env.APP_URL),
     );
   } catch (err) {
     const m = encodeURIComponent((err as Error).message);
     logger.error({ err }, 'gmail oauth callback failed');
-    return NextResponse.redirect(new URL(`/settings/gmail?error=${m}`, req.url));
+    return NextResponse.redirect(new URL(`/settings/gmail?error=${m}`, env.APP_URL));
   }
 }
