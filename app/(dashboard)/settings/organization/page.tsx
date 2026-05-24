@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { getOrgContext } from '@/src/lib/tenant';
 import { prisma } from '@/src/lib/prisma';
 import { can } from '@/src/lib/permissions';
@@ -23,7 +24,8 @@ export default async function OrganizationPage() {
       _count: { select: { members: true, tickets: true } },
     },
   });
-  if (!org) throw new Error('organization_not_found');
+  // Sessão órfã (orgId aponta pra org deletada/inacessível) — desloga e manda pro login.
+  if (!org) redirect('/api/auth/signout?callbackUrl=/login');
 
   const initials = org.name
     .split(/\s+/)
