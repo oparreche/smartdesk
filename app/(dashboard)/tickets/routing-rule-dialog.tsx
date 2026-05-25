@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState, useTransition } from 'react';
-import { createRoutingRuleFromTicketAction } from './actions';
+import { createRoutingRuleFromTicketAction, createIgnoreRuleFromTicketAction } from './actions';
 
 export type QueueOption = { slug: string; name: string };
 export type AgentOption = { email: string; name: string | null };
@@ -16,7 +16,7 @@ type EventDetail = {
   phone: string | null;
 };
 
-type ActionType = 'assign_queue' | 'assign_user' | 'set_priority' | 'add_tag';
+type ActionType = 'assign_queue' | 'assign_user' | 'set_priority' | 'add_tag' | 'ignore';
 
 const PRIORITIES: Array<{ value: string; label: string }> = [
   { value: 'low', label: 'Baixa' },
@@ -99,9 +99,14 @@ export function RoutingRuleDialog({
   const [assigneeEmail, setAssigneeEmail] = useState('');
   const [priority, setPriority] = useState('high');
   const [tag, setTag] = useState('');
+  const [ignoreScope, setIgnoreScope] = useState<'email' | 'domain'>('email');
   const [stopAfter, setStopAfter] = useState(false);
   const [pending, startTransition] = useTransition();
-  const [result, setResult] = useState<{ ruleId: string; matchValue: string } | null>(null);
+  const [result, setResult] = useState<
+    | { kind: 'routing'; ruleId: string; matchValue: string }
+    | { kind: 'ignore'; pattern: string }
+    | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -114,6 +119,7 @@ export function RoutingRuleDialog({
       setAssigneeEmail(agents[0]?.email ?? '');
       setPriority('high');
       setTag('');
+      setIgnoreScope('email');
       setStopAfter(false);
       setResult(null);
       setError(null);
@@ -140,6 +146,17 @@ export function RoutingRuleDialog({
     if (!detail) return;
     setError(null);
 
+    // Ignorar (não mapear): cria EmailRoutingRule, não AutomationRule.
+    if (actionType === 'ignore') {
+      const d = detail;
+      startTransition(async () => {
+        const r = await createIgnoreRuleFromTicketAction({ ticketId: d.ticketId, scope: ignoreScope });
+        if (r.ok) setResult({ kind: 'ignore', pattern: r.pattern });
+        else setError(r.error);
+      });
+      return;
+    }
+
     let action;
     if (actionType === 'assign_queue') {
       if (!queueSlug) return setError('Escolha uma fila.');
@@ -163,7 +180,7 @@ export function RoutingRuleDialog({
         stopAfterMatch: stopAfter,
       });
       if (r.ok) {
-        setResult({ ruleId: r.ruleId, matchValue: r.matchValue });
+        setResult({ kind: 'routing', ruleId: r.ruleId, matchValue: r.matchValue });
       } else {
         setError(r.error);
       }
@@ -203,56 +220,92 @@ export function RoutingRuleDialog({
 
         {result ? (
           <div className="flex flex-col gap-4 px-5 py-6">
-            <p className="text-sm text-foreground">
-              ✓ Regra criada — novos tickets de{' '}
-              <span className="font-medium">{result.matchValue}</span> serão roteados automaticamente.
-            </p>
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={close}
-                className="rounded-sm border border-border px-3 py-1.5 text-sm hover:bg-muted"
-              >
-                Fechar
-              </button>
-              <Link
-                href={`/rules/${result.ruleId}`}
-                className="rounded-sm bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:shadow-md"
-              >
-                Ajustar regra →
-              </Link>
-            </div>
+            {result.kind === 'routing' ? (
+              <>
+                <p className="text-sm text-foreground">
+                  ✓ Regra criada — novos tickets de{' '}
+                  <span className="font-medium">{result.matchValue}</span> serão roteados automaticamente.
+                </p>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={close}
+                    className="rounded-sm border border-border px-3 py-1.5 text-sm hover:bg-muted"
+                  >
+                    Fechar
+                  </button>
+                  <Link
+                    href={`/rules/${result.ruleId}`}
+                    className="rounded-sm bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:shadow-md"
+                  >
+                    Ajustar regra →
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-foreground">
+                  ✓ Regra criada — emails de{' '}
+                  <span className="font-mono font-medium">{result.pattern}</span> não criarão tickets
+                  (Gmail e IMAP).
+                </p>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={close}
+                    className="rounded-sm border border-border px-3 py-1.5 text-sm hover:bg-muted"
+                  >
+                    Fechar
+                  </button>
+                  <Link
+                    href="/settings/gmail"
+                    className="rounded-sm bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:shadow-md"
+                  >
+                    Ver regras de email →
+                  </Link>
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-4 px-5 py-4">
-            <p className="text-sm text-muted-foreground">
-              Aplica automaticamente a <span className="text-foreground">novos tickets</span> de{' '}
-              <span className="font-medium text-foreground">
-                {detail.requesterName || matchValue || 'este solicitante'}
-              </span>
-              .
-            </p>
+            {actionType === 'ignore' ? (
+              <p className="text-sm text-muted-foreground">
+                Impede que <span className="text-foreground">novos emails</span> deste remetente virem
+                tickets (aplicado na entrada do Gmail/IMAP).
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Aplica automaticamente a <span className="text-foreground">novos tickets</span> de{' '}
+                <span className="font-medium text-foreground">
+                  {detail.requesterName || matchValue || 'este solicitante'}
+                </span>
+                .
+              </p>
+            )}
 
-            {/* Casar por */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Identificar pelo</label>
-              <div className="inline-flex rounded-sm border border-border p-0.5">
-                <MatchTab
-                  active={matchBy === 'email'}
-                  disabled={!detail.email}
-                  onClick={() => setMatchBy('email')}
-                  label="Email"
-                  value={detail.email}
-                />
-                <MatchTab
-                  active={matchBy === 'phone'}
-                  disabled={!detail.phone}
-                  onClick={() => setMatchBy('phone')}
-                  label="Telefone"
-                  value={detail.phone}
-                />
+            {/* Casar por (só para roteamento positivo) */}
+            {actionType !== 'ignore' ? (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Identificar pelo</label>
+                <div className="inline-flex rounded-sm border border-border p-0.5">
+                  <MatchTab
+                    active={matchBy === 'email'}
+                    disabled={!detail.email}
+                    onClick={() => setMatchBy('email')}
+                    label="Email"
+                    value={detail.email}
+                  />
+                  <MatchTab
+                    active={matchBy === 'phone'}
+                    disabled={!detail.phone}
+                    onClick={() => setMatchBy('phone')}
+                    label="Telefone"
+                    value={detail.phone}
+                  />
+                </div>
               </div>
-            </div>
+            ) : null}
 
             {/* Ação */}
             <div className="flex flex-col gap-1.5">
@@ -266,6 +319,9 @@ export function RoutingRuleDialog({
                 <option value="assign_user">Atribuir a agente</option>
                 <option value="set_priority">Definir prioridade</option>
                 <option value="add_tag">Adicionar tag</option>
+                {detail.email ? (
+                  <option value="ignore">Não criar ticket (ignorar remetente)</option>
+                ) : null}
               </select>
             </div>
 
@@ -310,15 +366,52 @@ export function RoutingRuleDialog({
                 />
               </div>
             )}
+            {actionType === 'ignore' && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-muted-foreground">O que ignorar</label>
+                <div className="flex flex-col gap-1.5">
+                  <label className="flex items-center gap-2 rounded-sm border border-border bg-surface-raised px-2.5 py-1.5 text-sm">
+                    <input
+                      type="radio"
+                      name="ignoreScope"
+                      checked={ignoreScope === 'email'}
+                      onChange={() => setIgnoreScope('email')}
+                    />
+                    <span>
+                      Só este email <span className="font-mono text-xs text-muted-foreground">{detail.email}</span>
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2 rounded-sm border border-border bg-surface-raised px-2.5 py-1.5 text-sm">
+                    <input
+                      type="radio"
+                      name="ignoreScope"
+                      checked={ignoreScope === 'domain'}
+                      onChange={() => setIgnoreScope('domain')}
+                    />
+                    <span>
+                      Todo o domínio{' '}
+                      <span className="font-mono text-xs text-muted-foreground">
+                        *@{detail.email?.split('@')[1] ?? '…'}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+                <p className="text-[0.6875rem] text-muted-foreground">
+                  Emails que casarem serão descartados na entrada — não criam nem reabrem tickets.
+                </p>
+              </div>
+            )}
 
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={stopAfter}
-                onChange={(e) => setStopAfter(e.target.checked)}
-              />
-              Parar de avaliar outras regras após aplicar
-            </label>
+            {actionType !== 'ignore' ? (
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={stopAfter}
+                  onChange={(e) => setStopAfter(e.target.checked)}
+                />
+                Parar de avaliar outras regras após aplicar
+              </label>
+            ) : null}
 
             {error ? (
               <p role="alert" className="rounded-sm border border-destructive/30 bg-destructive-soft px-3 py-2 text-xs text-destructive">

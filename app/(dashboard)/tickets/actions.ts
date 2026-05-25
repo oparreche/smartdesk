@@ -11,6 +11,7 @@ import {
   deleteSavedFilter,
 } from '@/src/services/saved-filters';
 import { createRule } from '@/src/services/rules/crud';
+import { createRule as createEmailRoutingRule } from '@/src/services/gmail/routing';
 import { softDeleteTicket, TicketNotFoundError } from '@/src/services/tickets/delete';
 import type { Action } from '@/src/services/rules/schema';
 import type { TicketStatus } from '@prisma/client';
@@ -183,6 +184,63 @@ export async function createRoutingRuleFromTicketAction(
     revalidatePath('/rules');
     revalidatePath('/tickets');
     return { ok: true, ruleId: created.id, matchValue };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+const IgnoreRuleInput = z.object({
+  ticketId: z.string().uuid(),
+  scope: z.enum(['email', 'domain']),
+});
+
+export type IgnoreRuleState =
+  | { ok: true; pattern: string }
+  | { ok: false; error: string };
+
+/**
+ * Cria uma regra para NÃO mapear (ignorar) emails de um remetente ou domínio.
+ * Diferente do roteamento positivo: isso é um EmailRoutingRule (action=ignore)
+ * aplicado na ingestão (Gmail/IMAP) — impede a criação do ticket na entrada.
+ * Só faz sentido para email; WhatsApp/telefone não passa por essas regras.
+ */
+export async function createIgnoreRuleFromTicketAction(
+  input: { ticketId: string; scope: 'email' | 'domain' },
+): Promise<IgnoreRuleState> {
+  const ctx = await getOrgContext();
+  requirePermission(ctx.role, 'tickets:update');
+
+  const parsed = IgnoreRuleInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Dados inválidos.' };
+
+  const ticket = await prisma.ticket.findFirst({
+    where: { id: parsed.data.ticketId, organizationId: ctx.organizationId, deletedAt: null },
+    select: { code: true, requester: { select: { email: true } } },
+  });
+  if (!ticket) return { ok: false, error: 'Ticket não encontrado.' };
+
+  const email = ticket.requester.email?.trim().toLowerCase();
+  if (!email || !email.includes('@')) {
+    return { ok: false, error: 'O solicitante não tem email válido para ignorar.' };
+  }
+
+  let pattern: string;
+  if (parsed.data.scope === 'domain') {
+    const domain = email.split('@')[1];
+    if (!domain) return { ok: false, error: 'Não foi possível extrair o domínio.' };
+    pattern = `*@${domain}`;
+  } else {
+    pattern = email;
+  }
+
+  try {
+    await createEmailRoutingRule(ctx.organizationId, ctx.userId, {
+      action: 'ignore',
+      pattern,
+      note: `Ignorar — criado a partir do ticket ${ticket.code}`,
+    });
+    revalidatePath('/settings/gmail');
+    return { ok: true, pattern };
   } catch (err) {
     return { ok: false, error: (err as Error).message };
   }
