@@ -11,6 +11,7 @@ import {
   deleteSavedFilter,
 } from '@/src/services/saved-filters';
 import { createRule } from '@/src/services/rules/crud';
+import { softDeleteTicket, TicketNotFoundError } from '@/src/services/tickets/delete';
 import type { Action } from '@/src/services/rules/schema';
 import type { TicketStatus } from '@prisma/client';
 
@@ -183,6 +184,29 @@ export async function createRoutingRuleFromTicketAction(
     revalidatePath('/tickets');
     return { ok: true, ruleId: created.id, matchValue };
   } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+export type DeleteTicketState = { ok: true } | { ok: false; error: string };
+
+/**
+ * Soft delete de ticket a partir da lista/kanban/detalhe.
+ * Liberado para quem pode editar tickets (`tickets:update`).
+ */
+export async function deleteTicketAction(input: { ticketId: string }): Promise<DeleteTicketState> {
+  const ctx = await getOrgContext();
+  requirePermission(ctx.role, 'tickets:update');
+
+  const parsed = z.object({ ticketId: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Ticket inválido.' };
+
+  try {
+    await softDeleteTicket(ctx.organizationId, ctx.userId, parsed.data.ticketId);
+    revalidatePath('/tickets');
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof TicketNotFoundError) return { ok: false, error: 'Ticket não encontrado.' };
     return { ok: false, error: (err as Error).message };
   }
 }

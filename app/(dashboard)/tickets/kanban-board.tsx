@@ -6,6 +6,7 @@ import { useState, useTransition } from 'react';
 import type { TicketStatus, TicketPriority } from '@prisma/client';
 import { moveTicketAction } from './actions';
 import { RoutingRuleButton } from './routing-rule-dialog';
+import { DeleteTicketButton } from './delete-ticket-button';
 import { STATUS_LABEL, STATUS_BADGE, PRIORITY_BADGE, PRIORITY_LABEL, formatRelativeShort } from '@/src/lib/format';
 
 export type KanbanTicket = {
@@ -162,7 +163,7 @@ export function KanbanBoard({
                         ) : null}
                       </Link>
                       {canRoute ? (
-                        <div className="mt-2 flex justify-end border-t border-border-subtle pt-1.5">
+                        <div className="mt-2 flex items-center justify-end gap-1 border-t border-border-subtle pt-1.5">
                           <RoutingRuleButton
                             variant="card"
                             ticketId={t.id}
@@ -170,6 +171,7 @@ export function KanbanBoard({
                             email={t.requesterEmail}
                             phone={t.requesterPhone}
                           />
+                          <DeleteTicketButton ticketId={t.id} variant="card" />
                         </div>
                       ) : null}
                     </article>

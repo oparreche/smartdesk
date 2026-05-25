@@ -10,6 +10,7 @@ import { AiAssist } from './ai-assist';
 import { EmailBody } from './email-body';
 import { KbSuggestions } from './kb-suggestions';
 import { TicketActionsBar } from './ticket-actions-bar';
+import { DeleteTicketButton } from '../delete-ticket-button';
 import { CopilotDrawer } from './copilot-drawer';
 import { TicketContextPanel } from '@/src/components/layouts-builder/context-panel';
 import { isAiConfigured } from '@/src/lib/gemini';
@@ -113,17 +114,22 @@ export default async function TicketDetailPage(props: { params: Promise<{ code: 
         <h1 className="font-display text-[2rem] font-semibold leading-tight tracking-tight">{ticket.subject}</h1>
       </header>
 
-      <TicketActionsBar
-        code={ticket.code}
-        status={ticket.status}
-        priority={ticket.priority}
-        assigneeId={ticket.assigneeId}
-        queueId={ticket.queueId}
-        members={members.map((m) => ({ id: m.id, name: m.name, email: m.email }))}
-        queues={queues.map((q) => ({ id: q.id, name: q.name }))}
-        canUpdate={can(ctx.role, 'tickets:update')}
-        canAssign={can(ctx.role, 'tickets:assign')}
-      />
+      <div className="flex items-start justify-between gap-3">
+        <TicketActionsBar
+          code={ticket.code}
+          status={ticket.status}
+          priority={ticket.priority}
+          assigneeId={ticket.assigneeId}
+          queueId={ticket.queueId}
+          members={members.map((m) => ({ id: m.id, name: m.name, email: m.email }))}
+          queues={queues.map((q) => ({ id: q.id, name: q.name }))}
+          canUpdate={can(ctx.role, 'tickets:update')}
+          canAssign={can(ctx.role, 'tickets:assign')}
+        />
+        {can(ctx.role, 'tickets:update') ? (
+          <DeleteTicketButton ticketId={ticket.id} variant="bar" redirectTo="/tickets" />
+        ) : null}
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
         {/* Coluna principal */}

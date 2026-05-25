@@ -10,6 +10,7 @@ import { SavedFiltersBar, type SavedFilterItem } from './saved-filters-bar';
 import { ViewToggle } from './view-toggle';
 import { KanbanBoard, type KanbanTicket } from './kanban-board';
 import { RoutingRuleDialog, RoutingRuleButton } from './routing-rule-dialog';
+import { DeleteTicketButton } from './delete-ticket-button';
 import {
   STATUS_LABEL,
   STATUS_BADGE,
@@ -269,12 +270,15 @@ export default async function TicketsListPage(props: {
                     </td>
                     {canRoute ? (
                       <td className="px-2 py-3 text-right">
-                        <RoutingRuleButton
-                          ticketId={t.id}
-                          requesterName={t.requester.name}
-                          email={t.requester.email}
-                          phone={t.requester.phone}
-                        />
+                        <div className="flex items-center justify-end gap-0.5">
+                          <RoutingRuleButton
+                            ticketId={t.id}
+                            requesterName={t.requester.name}
+                            email={t.requester.email}
+                            phone={t.requester.phone}
+                          />
+                          <DeleteTicketButton ticketId={t.id} />
+                        </div>
                       </td>
                     ) : null}
                   </tr>
