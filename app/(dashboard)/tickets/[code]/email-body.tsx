@@ -7,17 +7,19 @@ type Props = {
   text: string | null;
   /** Quando true (notas internas, WhatsApp), força render texto. */
   textOnly?: boolean;
+  /** Carregar imagens remotas por padrão. Default: true (HTML com imagens). */
+  defaultImages?: boolean;
 };
 
 const MAX_IFRAME_HEIGHT = 2400;
 const COMPACT_HEIGHT = 380;
 
-export function EmailBody({ html, text, textOnly }: Props) {
+export function EmailBody({ html, text, textOnly, defaultImages = true }: Props) {
   const hasHtml = !!html?.trim() && !textOnly;
   const hasText = !!text?.trim();
   const [mode, setMode] = useState<'html' | 'text'>(hasHtml ? 'html' : 'text');
   const [height, setHeight] = useState(220);
-  const [imagesAllowed, setImagesAllowed] = useState(false);
+  const [imagesAllowed, setImagesAllowed] = useState(defaultImages);
   const [capped, setCapped] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [expanded, setExpanded] = useState(true);
