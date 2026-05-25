@@ -1,10 +1,13 @@
 import Link from 'next/link';
 import { getOrgContext } from '@/src/lib/tenant';
 import { can, requirePermission } from '@/src/lib/permissions';
+import { prisma } from '@/src/lib/prisma';
 import { listTickets } from '@/src/services/tickets/list';
 import { listQueues } from '@/src/services/queues';
 import { listSavedFilters } from '@/src/services/saved-filters';
 import { SavedFiltersBar, type SavedFilterItem } from './saved-filters-bar';
+import { ViewToggle } from './view-toggle';
+import { KanbanBoard, type KanbanTicket } from './kanban-board';
 import {
   STATUS_LABEL,
   STATUS_BADGE,
@@ -51,6 +54,20 @@ export default async function TicketsListPage(props: {
   const sp = await props.searchParams;
   const filters = parseSearch(sp);
 
+  // View: query param override > user preference > 'list'
+  const userPref = await prisma.user.findUnique({
+    where: { id: ctx.userId },
+    select: { defaultTicketView: true },
+  });
+  const explicit = Array.isArray(sp.view) ? sp.view[0] : sp.view;
+  const view: 'list' | 'kanban' =
+    explicit === 'kanban' || explicit === 'list'
+      ? explicit
+      : (userPref?.defaultTicketView ?? 'list');
+
+  // Pra kanban precisamos de mais tickets (sem paginação tradicional)
+  const pageSize = view === 'kanban' ? 200 : 25;
+
   const [result, queues, saved] = await Promise.all([
     listTickets(
       ctx.organizationId,
@@ -62,7 +79,7 @@ export default async function TicketsListPage(props: {
         assigneeId: filters.assignee as 'me' | 'unassigned' | undefined,
         search: filters.search,
       },
-      { page: filters.page, pageSize: 25 },
+      { page: view === 'kanban' ? 1 : filters.page, pageSize },
     ),
     listQueues(ctx.organizationId),
     listSavedFilters(ctx.organizationId, ctx.userId, 'tickets'),
@@ -94,12 +111,15 @@ export default async function TicketsListPage(props: {
             {result.total} resultado{result.total === 1 ? '' : 's'} · página {result.page} de {result.totalPages}
           </p>
         </div>
-        <Link
-          href="/tickets/new"
-          className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:shadow-md active:translate-y-px"
-        >
-          Novo ticket <span aria-hidden className="font-mono text-xs">＋</span>
-        </Link>
+        <div className="flex items-center gap-3">
+          <ViewToggle current={view} />
+          <Link
+            href="/tickets/new"
+            className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:shadow-md active:translate-y-px"
+          >
+            Novo ticket <span aria-hidden className="font-mono text-xs">＋</span>
+          </Link>
+        </div>
       </header>
 
       <SavedFiltersBar
@@ -165,6 +185,23 @@ export default async function TicketsListPage(props: {
         </Link>
       </form>
 
+      {view === 'kanban' ? (
+        <KanbanBoard
+          canMove={can(ctx.role, 'tickets:update')}
+          tickets={result.rows.map<KanbanTicket>((r) => ({
+            id: r.id,
+            code: r.code,
+            subject: r.subject,
+            status: r.status,
+            priority: r.priority,
+            origin: r.origin,
+            updatedAt: r.updatedAt,
+            requesterName: r.requester.name,
+            requesterEmail: r.requester.email,
+            assigneeName: r.assignee?.name ?? null,
+          }))}
+        />
+      ) : (
       <section className="card overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-surface-sunken text-left">
@@ -226,10 +263,13 @@ export default async function TicketsListPage(props: {
           </tbody>
         </table>
       </section>
+      )}
 
-      <footer className="flex items-center justify-end">
-        <Pagination current={result.page} total={result.totalPages} searchParams={sp} />
-      </footer>
+      {view === 'list' ? (
+        <footer className="flex items-center justify-end">
+          <Pagination current={result.page} total={result.totalPages} searchParams={sp} />
+        </footer>
+      ) : null}
     </div>
   );
 }

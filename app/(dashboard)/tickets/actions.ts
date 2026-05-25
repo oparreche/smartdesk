@@ -3,11 +3,14 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { getOrgContext } from '@/src/lib/tenant';
-import { can } from '@/src/lib/permissions';
+import { can, requirePermission } from '@/src/lib/permissions';
+import { prisma } from '@/src/lib/prisma';
+import { updateTicket, InvalidStatusTransitionError } from '@/src/services/tickets/update';
 import {
   createSavedFilter,
   deleteSavedFilter,
 } from '@/src/services/saved-filters';
+import type { TicketStatus } from '@prisma/client';
 
 const CreateInput = z.object({
   name: z.string().min(1).max(120),
@@ -69,4 +72,44 @@ export async function deleteSavedFilterAction(formData: FormData) {
     /* já registrado em audit / volta silencioso */
   }
   revalidatePath('/tickets');
+}
+
+/** Salva preferência de view (lista/kanban) do usuário. */
+export async function setTicketViewPrefAction(view: 'list' | 'kanban'): Promise<void> {
+  const ctx = await getOrgContext();
+  await prisma.user.update({
+    where: { id: ctx.userId },
+    data: { defaultTicketView: view },
+  });
+  revalidatePath('/tickets');
+}
+
+const MoveInput = z.object({
+  ticketId: z.string().uuid(),
+  status: z.enum([
+    'new', 'open', 'in_progress', 'pending_customer', 'pending_third_party',
+    'resolved', 'closed', 'cancelled',
+  ]),
+});
+
+export type MoveState = { ok: true } | { ok: false; error: string };
+
+/** Drag-and-drop no kanban: move ticket pra outra coluna. */
+export async function moveTicketAction(input: { ticketId: string; status: string }): Promise<MoveState> {
+  const ctx = await getOrgContext();
+  requirePermission(ctx.role, 'tickets:update');
+  const parsed = MoveInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Status inválido' };
+  try {
+    await updateTicket(ctx.organizationId, ctx.userId, parsed.data.ticketId, {
+      status: parsed.data.status as TicketStatus,
+    });
+    revalidatePath('/tickets');
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof InvalidStatusTransitionError) {
+      return { ok: false, error: 'Transição de status inválida' };
+    }
+    return { ok: false, error: (err as Error).message };
+  }
 }
