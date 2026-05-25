@@ -25,7 +25,7 @@ export type TicketListItem = {
   origin: 'gmail' | 'imap' | 'whatsapp' | 'form' | 'api' | 'manual';
   createdAt: Date;
   updatedAt: Date;
-  requester: { id: string; name: string | null; email: string | null };
+  requester: { id: string; name: string | null; email: string | null; phone: string | null };
   assignee: { id: string; name: string; email: string } | null;
   queue: { id: string; name: string; slug: string } | null;
 };
@@ -97,7 +97,7 @@ export async function listTickets(
         origin: true,
         createdAt: true,
         updatedAt: true,
-        requester: { select: { id: true, name: true, email: true } },
+        requester: { select: { id: true, name: true, email: true, phone: true } },
         assignee: { select: { id: true, name: true, email: true } },
         queue: { select: { id: true, name: true, slug: true } },
       },

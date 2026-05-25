@@ -4,10 +4,12 @@ import { can, requirePermission } from '@/src/lib/permissions';
 import { prisma } from '@/src/lib/prisma';
 import { listTickets } from '@/src/services/tickets/list';
 import { listQueues } from '@/src/services/queues';
+import { listAssignableMembers } from '@/src/services/organizations/members';
 import { listSavedFilters } from '@/src/services/saved-filters';
 import { SavedFiltersBar, type SavedFilterItem } from './saved-filters-bar';
 import { ViewToggle } from './view-toggle';
 import { KanbanBoard, type KanbanTicket } from './kanban-board';
+import { RoutingRuleDialog, RoutingRuleButton } from './routing-rule-dialog';
 import {
   STATUS_LABEL,
   STATUS_BADGE,
@@ -68,7 +70,9 @@ export default async function TicketsListPage(props: {
   // Pra kanban precisamos de mais tickets (sem paginação tradicional)
   const pageSize = view === 'kanban' ? 200 : 25;
 
-  const [result, queues, saved] = await Promise.all([
+  const canRoute = can(ctx.role, 'tickets:update');
+
+  const [result, queues, saved, agents] = await Promise.all([
     listTickets(
       ctx.organizationId,
       ctx.userId,
@@ -83,7 +87,11 @@ export default async function TicketsListPage(props: {
     ),
     listQueues(ctx.organizationId),
     listSavedFilters(ctx.organizationId, ctx.userId, 'tickets'),
+    canRoute ? listAssignableMembers(ctx.organizationId) : Promise.resolve([]),
   ]);
+
+  const queueOptions = queues.map((q) => ({ slug: q.slug, name: q.name }));
+  const agentOptions = agents.map((a) => ({ email: a.email, name: a.name }));
 
   const savedFilters: SavedFilterItem[] = saved.map((s) => ({
     id: s.id,
@@ -187,7 +195,8 @@ export default async function TicketsListPage(props: {
 
       {view === 'kanban' ? (
         <KanbanBoard
-          canMove={can(ctx.role, 'tickets:update')}
+          canMove={canRoute}
+          canRoute={canRoute}
           tickets={result.rows.map<KanbanTicket>((r) => ({
             id: r.id,
             code: r.code,
@@ -198,6 +207,7 @@ export default async function TicketsListPage(props: {
             updatedAt: r.updatedAt,
             requesterName: r.requester.name,
             requesterEmail: r.requester.email,
+            requesterPhone: r.requester.phone,
             assigneeName: r.assignee?.name ?? null,
           }))}
         />
@@ -214,12 +224,13 @@ export default async function TicketsListPage(props: {
               <th className="px-4 py-3 font-medium">Prioridade</th>
               <th className="px-4 py-3 font-medium">Responsável</th>
               <th className="px-4 py-3 font-medium text-right">Atualizado</th>
+              {canRoute ? <th className="px-4 py-3 font-medium text-right" aria-label="Ações" /> : null}
             </tr>
           </thead>
           <tbody>
             {result.rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-16 text-center text-sm text-muted-foreground">
+                <td colSpan={canRoute ? 9 : 8} className="px-4 py-16 text-center text-sm text-muted-foreground">
                   Nenhum ticket com os filtros atuais.
                 </td>
               </tr>
@@ -256,6 +267,16 @@ export default async function TicketsListPage(props: {
                     <td className="px-4 py-3 text-right text-xs text-muted-foreground" title={t.updatedAt.toISOString()}>
                       {formatRelativeShort(t.updatedAt, now)}
                     </td>
+                    {canRoute ? (
+                      <td className="px-2 py-3 text-right">
+                        <RoutingRuleButton
+                          ticketId={t.id}
+                          requesterName={t.requester.name}
+                          email={t.requester.email}
+                          phone={t.requester.phone}
+                        />
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })
@@ -269,6 +290,10 @@ export default async function TicketsListPage(props: {
         <footer className="flex items-center justify-end">
           <Pagination current={result.page} total={result.totalPages} searchParams={sp} />
         </footer>
+      ) : null}
+
+      {canRoute ? (
+        <RoutingRuleDialog queues={queueOptions} agents={agentOptions} />
       ) : null}
     </div>
   );

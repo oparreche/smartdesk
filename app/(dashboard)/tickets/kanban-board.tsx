@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import type { TicketStatus, TicketPriority } from '@prisma/client';
 import { moveTicketAction } from './actions';
+import { RoutingRuleButton } from './routing-rule-dialog';
 import { STATUS_LABEL, STATUS_BADGE, PRIORITY_BADGE, PRIORITY_LABEL, formatRelativeShort } from '@/src/lib/format';
 
 export type KanbanTicket = {
@@ -17,6 +18,7 @@ export type KanbanTicket = {
   updatedAt: Date;
   requesterName: string | null;
   requesterEmail: string | null;
+  requesterPhone: string | null;
   assigneeName: string | null;
 };
 
@@ -33,9 +35,11 @@ const COLUMNS: Array<{ status: TicketStatus; label: string }> = [
 export function KanbanBoard({
   tickets,
   canMove,
+  canRoute = false,
 }: {
   tickets: KanbanTicket[];
   canMove: boolean;
+  canRoute?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -157,6 +161,17 @@ export function KanbanBoard({
                           </p>
                         ) : null}
                       </Link>
+                      {canRoute ? (
+                        <div className="mt-2 flex justify-end border-t border-border-subtle pt-1.5">
+                          <RoutingRuleButton
+                            variant="card"
+                            ticketId={t.id}
+                            requesterName={t.requesterName}
+                            email={t.requesterEmail}
+                            phone={t.requesterPhone}
+                          />
+                        </div>
+                      ) : null}
                     </article>
                   ))
                 )}

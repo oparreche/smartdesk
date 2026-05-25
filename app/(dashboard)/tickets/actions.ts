@@ -10,6 +10,8 @@ import {
   createSavedFilter,
   deleteSavedFilter,
 } from '@/src/services/saved-filters';
+import { createRule } from '@/src/services/rules/crud';
+import type { Action } from '@/src/services/rules/schema';
 import type { TicketStatus } from '@prisma/client';
 
 const CreateInput = z.object({
@@ -110,6 +112,77 @@ export async function moveTicketAction(input: { ticketId: string; status: string
     if (err instanceof InvalidStatusTransitionError) {
       return { ok: false, error: 'Transição de status inválida' };
     }
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+const PriorityValues = ['low', 'normal', 'high', 'urgent', 'critical'] as const;
+
+const RoutingRuleInput = z.object({
+  ticketId: z.string().uuid(),
+  matchBy: z.enum(['email', 'phone']),
+  action: z.discriminatedUnion('type', [
+    z.object({ type: z.literal('assign_queue'), queueSlug: z.string().min(1).max(60) }),
+    z.object({ type: z.literal('assign_user'), email: z.string().email() }),
+    z.object({ type: z.literal('set_priority'), value: z.enum(PriorityValues) }),
+    z.object({ type: z.literal('add_tag'), value: z.string().min(1).max(60) }),
+  ]),
+  stopAfterMatch: z.boolean().optional(),
+});
+
+export type RoutingRuleState =
+  | { ok: true; ruleId: string; matchValue: string }
+  | { ok: false; error: string };
+
+/**
+ * Cria uma regra de roteamento a partir de um ticket: casa futuros tickets do
+ * mesmo solicitante (por email ou telefone) e aplica uma ação. Disponível para
+ * qualquer pessoa que possa editar tickets — não exige `rules:write`.
+ *
+ * O valor do match é lido do ticket no servidor (não confia no cliente).
+ */
+export async function createRoutingRuleFromTicketAction(
+  input: z.input<typeof RoutingRuleInput>,
+): Promise<RoutingRuleState> {
+  const ctx = await getOrgContext();
+  requirePermission(ctx.role, 'tickets:update');
+
+  const parsed = RoutingRuleInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Dados inválidos.' };
+
+  const ticket = await prisma.ticket.findFirst({
+    where: { id: parsed.data.ticketId, organizationId: ctx.organizationId, deletedAt: null },
+    select: { requester: { select: { email: true, phone: true } } },
+  });
+  if (!ticket) return { ok: false, error: 'Ticket não encontrado.' };
+
+  const matchValue =
+    parsed.data.matchBy === 'email' ? ticket.requester.email : ticket.requester.phone;
+  if (!matchValue) {
+    return {
+      ok: false,
+      error: parsed.data.matchBy === 'email'
+        ? 'O solicitante não tem email cadastrado.'
+        : 'O solicitante não tem telefone cadastrado.',
+    };
+  }
+
+  const field = parsed.data.matchBy === 'email' ? 'ticket.requester.email' : 'ticket.requester.phone';
+
+  try {
+    const created = await createRule(ctx.organizationId, ctx.userId, {
+      name: `Roteamento • ${matchValue}`.slice(0, 120),
+      trigger: 'ticket_created',
+      enabled: true,
+      conditions: { field, op: 'eq', value: matchValue },
+      actions: [parsed.data.action as Action],
+      runOrder: 0,
+      stopAfterMatch: parsed.data.stopAfterMatch ?? false,
+    });
+    revalidatePath('/rules');
+    revalidatePath('/tickets');
+    return { ok: true, ruleId: created.id, matchValue };
+  } catch (err) {
     return { ok: false, error: (err as Error).message };
   }
 }
