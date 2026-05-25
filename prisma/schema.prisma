@@ -8,10 +8,9 @@
 
 generator client {
   provider = "prisma-client-js"
-  // Path explícito para o Docker multi-stage funcionar com pnpm.
-  // Sem isso, pnpm gera dentro de node_modules/.pnpm/@prisma+client@.../ e
-  // o stage runner não acha node_modules/.prisma/client.
-  output   = "../node_modules/.prisma/client"
+  // Output default — Prisma escreve dentro do package @prisma/client (em pnpm,
+  // dentro de .pnpm/@prisma+client@.../). Dockerfile do runner copia node_modules
+  // inteiro (incluindo .pnpm/), então funciona sem custom path.
 }
 
 datasource db {
@@ -63,6 +62,8 @@ model Organization {
   kbArticles          KbArticle[]
   webhookEndpoints    WebhookEndpoint[]
   apiKeys             ApiKey[]
+  whatsappTemplates   WhatsappTemplate[]
+  whatsappTemplateSends WhatsappTemplateSend[]
 
   @@map("organizations")
 }
@@ -94,6 +95,7 @@ model User {
   savedFilters        SavedFilter[]
   createdMacros       Macro[]
   notifications       Notification[]
+  createdTemplates    WhatsappTemplate[]
 
   @@map("users")
 }
@@ -762,6 +764,8 @@ model WhatsappConnection {
   deletedAt            DateTime?                                          @map("deleted_at")
 
   organization         Organization        @relation(fields: [organizationId], references: [id])
+  templates            WhatsappTemplate[]
+  templateSends        WhatsappTemplateSend[]
 
   @@unique([organizationId, phoneNumberId])
   @@map("whatsapp_connections")
@@ -771,6 +775,103 @@ enum WhatsappConnStatus {
   active
   disabled
   error
+}
+
+model WhatsappTemplate {
+  id                 String                  @id @default(uuid()) @db.Char(36)
+  organizationId     String                                                      @map("organization_id") @db.Char(36)
+  connectionId       String                                                      @map("connection_id") @db.Char(36)
+
+  // Identidade no Meta — únicos por (WABA, name, language)
+  name               String                                                      @db.VarChar(64)
+  language           String                                                      @db.VarChar(20)
+  category           WaTemplateCategory
+  metaTemplateId     String?                                                     @map("meta_template_id") @db.VarChar(64)
+
+  status             WaTemplateStatus        @default(draft)
+  rejectionReason    String?                 @db.Text                            @map("rejection_reason")
+
+  // components: array de { type: "HEADER"|"BODY"|"FOOTER"|"BUTTONS", format?, text?, example?, buttons? }
+  components         Json
+  // metadata adicional por variável (label, exemplo, hint) — opcional
+  variablesSchema    Json?                                                       @map("variables_schema")
+
+  createdByUserId    String?                                                     @map("created_by_user_id") @db.Char(36)
+  submittedAt        DateTime?                                                   @map("submitted_at")
+  approvedAt         DateTime?                                                   @map("approved_at")
+  createdAt          DateTime                @default(now())                     @map("created_at")
+  updatedAt          DateTime                @updatedAt                          @map("updated_at")
+  deletedAt          DateTime?                                                   @map("deleted_at")
+
+  organization       Organization            @relation(fields: [organizationId], references: [id])
+  connection         WhatsappConnection      @relation(fields: [connectionId], references: [id])
+  createdBy          User?                   @relation(fields: [createdByUserId], references: [id])
+  sends              WhatsappTemplateSend[]
+
+  @@unique([connectionId, name, language])
+  @@index([organizationId, status])
+  @@map("whatsapp_templates")
+}
+
+enum WaTemplateStatus {
+  draft       // ainda não enviado ao Meta
+  pending     // em análise no Meta
+  approved
+  rejected
+  paused
+  disabled
+}
+
+enum WaTemplateCategory {
+  marketing
+  utility
+  authentication
+}
+
+model WhatsappTemplateSend {
+  id                 String                  @id @default(uuid()) @db.Char(36)
+  organizationId     String                                                      @map("organization_id") @db.Char(36)
+  templateId         String                                                      @map("template_id") @db.Char(36)
+  connectionId       String                                                      @map("connection_id") @db.Char(36)
+  ticketId           String?                                                     @map("ticket_id") @db.Char(36)
+  sentByUserId       String?                                                     @map("sent_by_user_id") @db.Char(36)
+
+  recipientPhone     String                                                      @map("recipient_phone") @db.VarChar(40)
+  recipientName      String?                                                     @map("recipient_name") @db.VarChar(200)
+  variables          Json?
+
+  waMessageId        String?                                                     @map("wa_message_id") @db.VarChar(128)
+  waConversationId   String?                                                     @map("wa_conversation_id") @db.VarChar(128)
+
+  status             WaTemplateSendStatus    @default(queued)
+  failureReason      String?                 @db.Text                            @map("failure_reason")
+
+  // Billing capturado do webhook (campos statuses[].pricing)
+  pricingCategory    String?                                                     @map("pricing_category") @db.VarChar(40)
+  pricingModel       String?                                                     @map("pricing_model") @db.VarChar(40)
+  costAmount         Decimal?                @db.Decimal(10, 6)                  @map("cost_amount")
+  costCurrency       String?                                                     @map("cost_currency") @db.VarChar(3)
+
+  sentAt             DateTime                @default(now())                     @map("sent_at")
+  deliveredAt        DateTime?                                                   @map("delivered_at")
+  readAt             DateTime?                                                   @map("read_at")
+  failedAt           DateTime?                                                   @map("failed_at")
+
+  organization       Organization            @relation(fields: [organizationId], references: [id])
+  template           WhatsappTemplate        @relation(fields: [templateId], references: [id])
+  connection         WhatsappConnection      @relation(fields: [connectionId], references: [id])
+
+  @@index([organizationId, templateId, sentAt])
+  @@index([waMessageId])
+  @@map("whatsapp_template_sends")
+}
+
+enum WaTemplateSendStatus {
+  queued
+  sent
+  delivered
+  read
+  failed
 }
 
 // =========================

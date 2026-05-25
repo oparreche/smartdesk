@@ -3,6 +3,7 @@ import { requirePermission } from '@/src/lib/permissions';
 import { env } from '@/src/lib/env';
 import { listConnections, buildConnectionView } from '@/src/services/whatsapp/setup';
 import { formatDateTime } from '@/src/lib/format';
+import Link from 'next/link';
 import { NewConnectionForm } from './new-connection-form';
 import { EditConnectionForm } from './edit-connection-form';
 import { disconnectWhatsappAction } from './actions';
@@ -26,13 +27,23 @@ export default async function WhatsappSettingsPage() {
             WhatsApp
           </span>
         </div>
-        <h1 className="font-display text-[2rem] font-semibold leading-tight tracking-tight">
-          Canal WhatsApp
-        </h1>
-        <p className="max-w-2xl text-sm text-muted-foreground">
-          Conecte números WhatsApp Business via Cloud API da Meta pra receber
-          mensagens como tickets e responder dentro do SmartDesk.
-        </p>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="font-display text-[2rem] font-semibold leading-tight tracking-tight">
+              Canal WhatsApp
+            </h1>
+            <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+              Conecte números WhatsApp Business via Cloud API da Meta pra receber
+              mensagens como tickets e responder dentro do SmartDesk.
+            </p>
+          </div>
+          <Link
+            href="/settings/whatsapp/templates"
+            className="rounded-sm border border-border bg-surface px-3 py-2 text-xs font-medium text-foreground-secondary transition-colors hover:border-primary/40 hover:text-primary"
+          >
+            Templates de mensagem →
+          </Link>
+        </div>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
