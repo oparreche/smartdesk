@@ -1264,23 +1264,26 @@ model ChatbotConfig {
   organizationId        String               @map("organization_id") @db.Char(36)
   connectionId          String               @unique               @map("connection_id") @db.Char(36)
 
-  enabled               Boolean              @default(false)
+  // off = inbound vira ticket direto (sem bot)
+  // scripted = pergunta required_fields em sequência, sem LLM (determinístico)
+  // llm = chama Gemini com prompt + estado (atual)
+  mode                  ChatbotMode          @default(off)
 
-  // Greeting enviado na primeira mensagem da sessão (antes do LLM)
   greeting              String               @db.Text
-
-  // Prompt do sistema — instruções de tom, papel, conhecimento de domínio
   systemPrompt          String               @db.Text
 
-  // Lista de campos obrigatórios pra abrir ticket:
-  // [{ key, label, question, type: 'text'|'email'|'phone'|'cpf', required: bool }]
   requiredFields        Json                 @map("required_fields")
-
-  // Palavras-chave que forçam escalonamento imediato
   escalationKeywords    Json                 @map("escalation_keywords")
 
-  // Máximo de turnos antes de forçar escalonamento (proteção)
   maxTurns              Int                  @default(20)              @map("max_turns")
+
+  // Auto-resposta fora do horário comercial.
+  // Se outOfHoursMessage estiver setado, bot envia essa mensagem (uma vez por sessão)
+  // quando inbound chega fora da janela. businessHours em formato "HH:MM" 24h.
+  outOfHoursMessage     String?              @db.Text                  @map("out_of_hours_message")
+  businessHoursStart    String?              @db.VarChar(5)            @map("business_hours_start")
+  businessHoursEnd      String?              @db.VarChar(5)            @map("business_hours_end")
+  businessTimezone      String               @default("America/Sao_Paulo") @db.VarChar(60) @map("business_timezone")
 
   // Chave Gemini custom do tenant (criptografada). Vazio = usa GEMINI_API_KEY global.
   geminiApiKeyEnc       String?              @db.Text                  @map("gemini_api_key_enc")
@@ -1295,6 +1298,12 @@ model ChatbotConfig {
 
   @@index([organizationId])
   @@map("chatbot_configs")
+}
+
+enum ChatbotMode {
+  off
+  scripted
+  llm
 }
 
 model ChatbotSession {
@@ -1314,6 +1323,9 @@ model ChatbotSession {
   // Histórico de mensagens: [{ role: 'user'|'model', text, at: ISO }]
   // Limitado a últimas 30 mensagens (LLM context window).
   messages        Json
+
+  // Já enviou auto-resposta de fora-de-horário nessa sessão?
+  oohSent         Boolean               @default(false) @map("ooh_sent")
 
   ticketId        String?               @map("ticket_id") @db.Char(36)
 

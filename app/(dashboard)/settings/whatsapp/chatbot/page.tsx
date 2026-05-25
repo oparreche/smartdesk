@@ -44,13 +44,17 @@ export default async function ChatbotSettingsPage() {
   const initialValues = cfg
     ? {
         connectionId: cfg.connectionId,
-        enabled: cfg.enabled,
+        mode: cfg.mode,
         greeting: cfg.greeting,
         systemPrompt: cfg.systemPrompt,
         maxTurns: cfg.maxTurns,
         geminiModel: cfg.geminiModel,
         requiredFields: (cfg.requiredFields as unknown as RequiredFieldInput[]) ?? [],
         escalationKeywords: ((cfg.escalationKeywords as unknown) as string[]) ?? [],
+        outOfHoursMessage: cfg.outOfHoursMessage,
+        businessHoursStart: cfg.businessHoursStart,
+        businessHoursEnd: cfg.businessHoursEnd,
+        businessTimezone: cfg.businessTimezone,
       }
     : null;
 

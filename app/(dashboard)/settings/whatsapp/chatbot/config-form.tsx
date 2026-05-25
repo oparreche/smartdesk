@@ -1,7 +1,11 @@
 'use client';
 
-import { useActionState, useState } from 'react';
-import { saveChatbotConfigAction, type SaveState } from './actions';
+import { useActionState, useState, useTransition } from 'react';
+import {
+  saveChatbotConfigAction,
+  improvePromptAction,
+  type SaveState,
+} from './actions';
 
 const inputClass =
   'rounded-sm border border-border bg-surface-raised px-3 py-2 text-sm shadow-xs outline-none transition-colors focus:border-primary focus:bg-background';
@@ -17,6 +21,8 @@ export type RequiredFieldInput = {
   required: boolean;
 };
 
+export type ChatbotMode = 'off' | 'scripted' | 'llm';
+
 export function ChatbotConfigForm({
   connections,
   initialValues,
@@ -25,19 +31,23 @@ export function ChatbotConfigForm({
   connections: ConnOption[];
   initialValues: {
     connectionId: string;
-    enabled: boolean;
+    mode: ChatbotMode;
     greeting: string;
     systemPrompt: string;
     maxTurns: number;
     geminiModel: string | null;
     requiredFields: RequiredFieldInput[];
     escalationKeywords: string[];
+    outOfHoursMessage: string | null;
+    businessHoursStart: string | null;
+    businessHoursEnd: string | null;
+    businessTimezone: string;
   } | null;
   hasKey: boolean;
 }) {
   const defaults = initialValues ?? {
     connectionId: connections[0]?.id ?? '',
-    enabled: false,
+    mode: 'off' as ChatbotMode,
     greeting: 'Olá! Sou o assistente virtual do SmartDesk. Em que posso ajudar?',
     systemPrompt:
       'Você é um assistente cordial que atende clientes via WhatsApp. Seu objetivo é entender a demanda do cliente, responder dúvidas frequentes do escopo abaixo e, quando necessário, coletar informações antes de transferir pra um atendente humano.\n\nEscopo: helpdesk genérico (substitua aqui pelo seu).',
@@ -49,13 +59,38 @@ export function ChatbotConfigForm({
       { key: 'assunto', label: 'Resumo do problema', question: 'Pode descrever em 1-2 frases o que está acontecendo?', type: 'text', required: true },
     ],
     escalationKeywords: ['atendente', 'humano', 'pessoa', 'falar com alguem'],
+    outOfHoursMessage: null,
+    businessHoursStart: null,
+    businessHoursEnd: null,
+    businessTimezone: 'America/Sao_Paulo',
   };
 
   const [state, formAction, pending] = useActionState(saveChatbotConfigAction, initial);
+  const [mode, setMode] = useState<ChatbotMode>(defaults.mode);
+  const [systemPrompt, setSystemPrompt] = useState(defaults.systemPrompt);
   const [fields, setFields] = useState<RequiredFieldInput[]>(defaults.requiredFields);
   const [keywords, setKeywords] = useState<string[]>(defaults.escalationKeywords);
   const [newKw, setNewKw] = useState('');
   const [clearKey, setClearKey] = useState(false);
+  const [connectionId, setConnectionId] = useState(defaults.connectionId);
+
+  // Improve prompt
+  const [improvePending, startImprove] = useTransition();
+  const [improvedPreview, setImprovedPreview] = useState<string | null>(null);
+  const [improveError, setImproveError] = useState<string | null>(null);
+
+  function handleImprove() {
+    setImproveError(null);
+    setImprovedPreview(null);
+    const fd = new FormData();
+    fd.set('connectionId', connectionId);
+    fd.set('systemPrompt', systemPrompt);
+    startImprove(async () => {
+      const r = await improvePromptAction(undefined, fd);
+      if (r.ok) setImprovedPreview(r.improved);
+      else setImproveError(r.error);
+    });
+  }
 
   return (
     <form action={formAction} className="card flex flex-col gap-5 p-5">
@@ -79,23 +114,46 @@ export function ChatbotConfigForm({
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-foreground-secondary">Número conectado</span>
-          <select name="connectionId" required defaultValue={defaults.connectionId} className={inputClass}>
+          <select
+            name="connectionId"
+            required
+            value={connectionId}
+            onChange={(e) => setConnectionId(e.target.value)}
+            className={inputClass}
+          >
             {connections.map((c) => (
               <option key={c.id} value={c.id}>{c.displayPhoneNumber}</option>
             ))}
           </select>
         </label>
-
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            name="enabled"
-            defaultChecked={defaults.enabled}
-            className="h-4 w-4 rounded-sm border border-border bg-surface-raised"
-          />
-          <span className="text-sm font-medium text-foreground">Chatbot habilitado</span>
-        </label>
       </div>
+
+      <fieldset className="rounded-sm border border-border bg-surface-raised p-3">
+        <legend className="px-1 text-xs font-medium text-foreground-secondary">Modo de operação</legend>
+        <input type="hidden" name="mode" value={mode} />
+        <div className="mt-1 grid grid-cols-1 gap-2 md:grid-cols-3">
+          {([
+            { v: 'off', label: 'Off', desc: 'Inbound vira ticket direto. Sem bot.' },
+            { v: 'scripted', label: 'Scripted', desc: 'Pergunta os campos sequencialmente. Sem LLM, sem custo, sem surpresa.' },
+            { v: 'llm', label: 'LLM (Gemini)', desc: 'Conversa livre com IA. Coleta campos enquanto responde dúvidas. Mais flexível.' },
+          ] as const).map((opt) => (
+            <button
+              type="button"
+              key={opt.v}
+              onClick={() => setMode(opt.v)}
+              className={[
+                'flex flex-col items-start gap-1 rounded-sm border p-2.5 text-left transition-colors',
+                mode === opt.v
+                  ? 'border-primary bg-primary-soft text-foreground'
+                  : 'border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground',
+              ].join(' ')}
+            >
+              <span className="text-sm font-medium">{opt.label}</span>
+              <span className="text-[0.6875rem] leading-relaxed">{opt.desc}</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
 
       <label className="flex flex-col gap-1.5">
         <span className="text-xs font-medium text-foreground-secondary">
@@ -110,20 +168,63 @@ export function ChatbotConfigForm({
         />
       </label>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-foreground-secondary">
-          System prompt · instruções de papel/tom/conhecimento (max 8k chars)
-        </span>
+      <div className={`flex flex-col gap-1.5 ${mode === 'llm' ? '' : 'opacity-50'}`}>
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-xs font-medium text-foreground-secondary">
+            System prompt {mode !== 'llm' ? <span className="text-muted-foreground">· só usado em modo LLM</span> : null}
+          </span>
+          <button
+            type="button"
+            onClick={handleImprove}
+            disabled={improvePending || mode !== 'llm' || !systemPrompt}
+            className="rounded-sm border border-primary/40 bg-primary-soft px-2 py-1 text-[0.6875rem] font-medium text-primary hover:bg-primary hover:text-primary-foreground disabled:opacity-50"
+            title="Reescreve o prompt aplicando técnicas de prompt engineering via Gemini"
+          >
+            {improvePending ? '↻ melhorando…' : '✨ Melhorar prompt'}
+          </button>
+        </div>
         <textarea
           name="systemPrompt"
-          defaultValue={defaults.systemPrompt}
+          value={systemPrompt}
+          onChange={(e) => setSystemPrompt(e.target.value)}
           required
           minLength={10}
           maxLength={8000}
           rows={8}
           className={`${inputClass} font-mono text-[0.8125rem]`}
         />
-      </label>
+        {improveError ? (
+          <p role="alert" className="rounded-sm border border-destructive/30 bg-destructive-soft px-2 py-1 text-[0.6875rem] text-destructive">
+            ⚠ {improveError}
+          </p>
+        ) : null}
+        {improvedPreview ? (
+          <div className="rounded-sm border border-primary/30 bg-primary-soft/50 p-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-xs font-medium text-primary">Versão sugerida</p>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => { setSystemPrompt(improvedPreview); setImprovedPreview(null); }}
+                  className="rounded-sm bg-primary px-2 py-0.5 text-[0.6875rem] font-medium text-primary-foreground"
+                >
+                  Usar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImprovedPreview(null)}
+                  className="rounded-sm border border-border bg-surface px-2 py-0.5 text-[0.6875rem]"
+                >
+                  Descartar
+                </button>
+              </div>
+            </div>
+            <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words font-mono text-[0.75rem] text-foreground">
+              {improvedPreview}
+            </pre>
+          </div>
+        ) : null}
+      </div>
 
       <FieldsEditor fields={fields} onChange={setFields} />
 
@@ -164,6 +265,52 @@ export function ChatbotConfigForm({
             className={inputClass}
           />
         </label>
+      </div>
+
+      <div className="rounded-sm border border-border bg-surface-raised p-3">
+        <p className="text-xs font-medium text-foreground-secondary">Auto-resposta fora do horário</p>
+        <p className="mt-1 text-[0.6875rem] text-muted-foreground">
+          Se o cliente mandar mensagem fora dessa janela, o bot envia esse texto uma vez por
+          sessão e segue o fluxo normal. Deixe os horários vazios pra não usar.
+        </p>
+        <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[2fr_1fr_1fr_1fr]">
+          <input
+            name="outOfHoursMessage"
+            defaultValue={defaults.outOfHoursMessage ?? ''}
+            placeholder="Olá! No momento estamos fora do horário de atendimento (segunda a sexta, 9h-18h). Em breve retornaremos."
+            maxLength={2000}
+            className={inputClass}
+          />
+          <label className="flex flex-col gap-1">
+            <span className="text-[0.6875rem] text-muted-foreground">Início (HH:MM)</span>
+            <input
+              name="businessHoursStart"
+              defaultValue={defaults.businessHoursStart ?? ''}
+              placeholder="09:00"
+              pattern="^([01]\d|2[0-3]):[0-5]\d$"
+              className={`${inputClass} font-mono`}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[0.6875rem] text-muted-foreground">Fim (HH:MM)</span>
+            <input
+              name="businessHoursEnd"
+              defaultValue={defaults.businessHoursEnd ?? ''}
+              placeholder="18:00"
+              pattern="^([01]\d|2[0-3]):[0-5]\d$"
+              className={`${inputClass} font-mono`}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[0.6875rem] text-muted-foreground">Timezone (IANA)</span>
+            <input
+              name="businessTimezone"
+              defaultValue={defaults.businessTimezone}
+              placeholder="America/Sao_Paulo"
+              className={`${inputClass} font-mono text-[0.75rem]`}
+            />
+          </label>
+        </div>
       </div>
 
       <div className="rounded-sm border border-border bg-surface-raised p-3">

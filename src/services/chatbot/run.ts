@@ -43,7 +43,7 @@ export async function runChatbotTurn(input: {
   const cfg = await prisma.chatbotConfig.findUnique({
     where: { connectionId: input.connectionId },
   });
-  if (!cfg || !cfg.enabled) {
+  if (!cfg || cfg.mode === 'off') {
     return { handled: false };
   }
 
@@ -57,6 +57,24 @@ export async function runChatbotTurn(input: {
   const requiredFields = readRequiredFields(cfg.requiredFields);
   const escalationKeywords = readKeywords(cfg.escalationKeywords);
   const collected = readCollected(session.collectedFields);
+
+  // Out-of-hours: se está fora do horário e ainda não mandamos a auto-resposta nessa sessão, manda.
+  // Não bloqueia o resto do fluxo — a mensagem do bot vai antes da resposta normal/escalação.
+  if (
+    cfg.outOfHoursMessage &&
+    cfg.businessHoursStart &&
+    cfg.businessHoursEnd &&
+    !session.oohSent &&
+    !isWithinBusinessHours(cfg.businessHoursStart, cfg.businessHoursEnd, cfg.businessTimezone)
+  ) {
+    await sendWhatsappText(input.connectionId, input.fromPhone, cfg.outOfHoursMessage);
+    history.push({ role: 'model', text: cfg.outOfHoursMessage, at: new Date().toISOString() });
+    await prisma.chatbotSession.update({
+      where: { id: session.id },
+      data: { oohSent: true },
+    });
+    session.oohSent = true;
+  }
 
   // 1) Escalonamento por keyword (case-insensitive)
   const lower = input.text.toLowerCase();
@@ -103,7 +121,41 @@ export async function runChatbotTurn(input: {
     });
   }
 
-  // 5) Chama LLM
+  // 5a) Scripted mode — sem LLM, apenas próxima pergunta de campo pendente
+  if (cfg.mode === 'scripted') {
+    if (stillMissing.length === 0) {
+      // Todos coletados → escala
+      return escalateAndRespond({
+        organizationId: input.organizationId,
+        connectionId: input.connectionId,
+        sessionId: session.id,
+        fromPhone: input.fromPhone,
+        contactName: input.contactName,
+        collected,
+        history,
+        requiredFields,
+        reason: 'all_collected',
+      });
+    }
+    const next = stillMissing[0]!;
+    const question = next.question;
+    await sendWhatsappText(input.connectionId, input.fromPhone, question);
+    history.push({ role: 'model', text: question, at: new Date().toISOString() });
+    await prisma.chatbotSession.update({
+      where: { id: session.id },
+      data: {
+        messages: trimHistory(history) as unknown as Prisma.InputJsonValue,
+        collectedFields: Object.keys(collected).length
+          ? (collected as unknown as Prisma.InputJsonValue)
+          : Prisma.DbNull,
+        turns: nextTurns,
+        lastMessageAt: new Date(),
+      },
+    });
+    return { handled: true, reply: question };
+  }
+
+  // 5b) LLM mode — chama Gemini
   let aiReply: string;
   try {
     aiReply = await callBotLlm({
@@ -397,4 +449,41 @@ function readCollected(raw: unknown): Record<string, string> {
 
 function trimHistory(history: SessionMessage[]): SessionMessage[] {
   return history.slice(-HISTORY_LIMIT);
+}
+
+/**
+ * Verifica se "agora" está dentro da janela start..end (HH:MM, 24h) no timezone dado.
+ * Suporta janelas que cruzam a meia-noite (start > end).
+ */
+function isWithinBusinessHours(start: string, end: string, timezone: string): boolean {
+  try {
+    const fmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(new Date());
+    const hh = parts.find((p) => p.type === 'hour')?.value ?? '00';
+    const mm = parts.find((p) => p.type === 'minute')?.value ?? '00';
+    const now = parseHHMM(`${hh}:${mm}`);
+    const s = parseHHMM(start);
+    const e = parseHHMM(end);
+    if (now == null || s == null || e == null) return true;
+    if (s === e) return true;
+    if (s < e) return now >= s && now < e;
+    // janela cruza meia-noite
+    return now >= s || now < e;
+  } catch {
+    return true; // fallback: considera dentro do horário
+  }
+}
+
+function parseHHMM(s: string): number | null {
+  const m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  return h * 60 + min;
 }
