@@ -9,6 +9,8 @@ export type TicketFilters = {
   assigneeId?: string | 'me' | 'unassigned';
   tagId?: string;
   search?: string; // procura em code, subject, requester.email/name
+  createdFrom?: Date; // filtra por data de abertura (createdAt >= )
+  createdTo?: Date; // filtra por data de abertura (createdAt <= )
 };
 
 export type ListOptions = {
@@ -66,6 +68,13 @@ export async function listTickets(
 
   if (filters.tagId) {
     where.tags = { some: { tagId: filters.tagId } };
+  }
+
+  if (filters.createdFrom || filters.createdTo) {
+    where.createdAt = {
+      ...(filters.createdFrom ? { gte: filters.createdFrom } : {}),
+      ...(filters.createdTo ? { lte: filters.createdTo } : {}),
+    };
   }
 
   if (filters.search) {

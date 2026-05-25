@@ -29,11 +29,61 @@ const PRIORITY_VALUES: TicketPriority[] = ['low', 'normal', 'high', 'urgent', 'c
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
+const PERIOD_VALUES = ['today', '7d', '30d', 'month', 'custom'] as const;
+type Period = (typeof PERIOD_VALUES)[number];
+
+/** Converte preset/custom em intervalo de datas de abertura (createdAt). */
+function resolveDateRange(
+  period: string | undefined,
+  from: string | undefined,
+  to: string | undefined,
+): { createdFrom?: Date; createdTo?: Date } {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const customRange = (): { createdFrom?: Date; createdTo?: Date } => {
+    const range: { createdFrom?: Date; createdTo?: Date } = {};
+    if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      const [y, m, d] = from.split('-').map(Number);
+      range.createdFrom = new Date(y, m - 1, d, 0, 0, 0, 0);
+    }
+    if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      const [y, m, d] = to.split('-').map(Number);
+      range.createdTo = new Date(y, m - 1, d, 23, 59, 59, 999);
+    }
+    return range;
+  };
+
+  switch (period) {
+    case 'today':
+      return { createdFrom: startOfToday };
+    case '7d':
+      return { createdFrom: new Date(startOfToday.getTime() - 6 * 86400000) };
+    case '30d':
+      return { createdFrom: new Date(startOfToday.getTime() - 29 * 86400000) };
+    case 'month':
+      return { createdFrom: new Date(now.getFullYear(), now.getMonth(), 1) };
+    case 'custom':
+      return customRange();
+    default:
+      // Sem preset, mas se houver datas preenchidas, trata como intervalo custom.
+      return from || to ? customRange() : {};
+  }
+}
+
 function parseSearch(searchParams: SearchParams) {
   const arr = (v: string | string[] | undefined): string[] =>
     Array.isArray(v) ? v : v ? [v] : [];
   const one = (v: string | string[] | undefined): string | undefined =>
     Array.isArray(v) ? v[0] : v;
+
+  const periodRaw = one(searchParams.period);
+  const period = (PERIOD_VALUES as readonly string[]).includes(periodRaw ?? '')
+    ? (periodRaw as Period)
+    : undefined;
+  const from = one(searchParams.from);
+  const to = one(searchParams.to);
+
   return {
     status: arr(searchParams.status).filter((s): s is TicketStatus =>
       (STATUS_VALUES as string[]).includes(s),
@@ -44,6 +94,10 @@ function parseSearch(searchParams: SearchParams) {
     queueId: one(searchParams.queueId),
     assignee: one(searchParams.assignee),
     search: one(searchParams.q),
+    period,
+    from,
+    to,
+    ...resolveDateRange(period, from, to),
     page: Number(one(searchParams.page) ?? 1),
   };
 }
@@ -83,6 +137,8 @@ export default async function TicketsListPage(props: {
         queueId: filters.queueId,
         assigneeId: filters.assignee as 'me' | 'unassigned' | undefined,
         search: filters.search,
+        createdFrom: filters.createdFrom,
+        createdTo: filters.createdTo,
       },
       { page: view === 'kanban' ? 1 : filters.page, pageSize },
     ),
@@ -182,6 +238,36 @@ export default async function TicketsListPage(props: {
             <option value="me">Meus</option>
             <option value="unassigned">Sem responsável</option>
           </select>
+        </FilterField>
+        <FilterField label="Período (abertura)">
+          <select
+            name="period"
+            defaultValue={filters.period ?? ''}
+            className="rounded-sm border border-border bg-surface-raised px-2.5 py-1.5 text-sm shadow-xs outline-none focus:border-primary"
+          >
+            <option value="">Qualquer data</option>
+            <option value="today">Hoje</option>
+            <option value="7d">Últimos 7 dias</option>
+            <option value="30d">Últimos 30 dias</option>
+            <option value="month">Este mês</option>
+            <option value="custom">Personalizado…</option>
+          </select>
+        </FilterField>
+        <FilterField label="De">
+          <input
+            type="date"
+            name="from"
+            defaultValue={filters.from ?? ''}
+            className="rounded-sm border border-border bg-surface-raised px-2.5 py-1.5 text-sm shadow-xs outline-none focus:border-primary"
+          />
+        </FilterField>
+        <FilterField label="Até">
+          <input
+            type="date"
+            name="to"
+            defaultValue={filters.to ?? ''}
+            className="rounded-sm border border-border bg-surface-raised px-2.5 py-1.5 text-sm shadow-xs outline-none focus:border-primary"
+          />
         </FilterField>
         <button
           type="submit"
