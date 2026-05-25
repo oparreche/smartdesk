@@ -62,6 +62,7 @@ model Organization {
   kbArticles          KbArticle[]
   webhookEndpoints    WebhookEndpoint[]
   apiKeys             ApiKey[]
+  categorizationConfig CategorizationConfig?
   whatsappTemplates   WhatsappTemplate[]
   whatsappTemplateSends WhatsappTemplateSend[]
   chatbotConfigs      ChatbotConfig[]
@@ -465,11 +466,44 @@ model Tag {
   color          String?
   createdAt      DateTime     @default(now())          @map("created_at")
 
+  // Auto-categorização: tenant descreve o significado da tag e quais emails devem tê-la.
+  /// O que a tag significa e quais tickets/emails devem recebê-la (contexto p/ Gemini).
+  description       String?  @db.Text
+  /// Palavras-chave (array de strings) para o modo determinístico.
+  keywords          Json?
+  /// Mínimo de palavras-chave distintas que precisam aparecer p/ aplicar a tag.
+  minKeywordMatches Int      @default(2) @map("min_keyword_matches")
+  /// Se true, a tag participa da categorização automática.
+  autoCategorize    Boolean  @default(false) @map("auto_categorize")
+
   organization   Organization @relation(fields: [organizationId], references: [id])
   tickets        TicketTag[]
 
   @@unique([organizationId, name])
   @@map("tags")
+}
+
+enum CategorizationMode {
+  auto      // Gemini se houver chave; senão palavras-chave
+  keywords  // sempre palavras-chave
+  ai        // sempre Gemini (requer chave)
+}
+
+/// Configuração de categorização automática de tickets por org.
+model CategorizationConfig {
+  id                String             @id @default(uuid()) @db.Char(36)
+  organizationId    String             @unique               @map("organization_id") @db.Char(36)
+  enabled           Boolean            @default(false)
+  mode              CategorizationMode @default(auto)
+  /// Chave Gemini custom do tenant (criptografada). Vazio = usa GEMINI_API_KEY global.
+  geminiApiKeyEnc   String?            @db.Text              @map("gemini_api_key_enc")
+  geminiApiKeyNonce String?                                  @map("gemini_api_key_nonce")
+  createdAt         DateTime           @default(now())       @map("created_at")
+  updatedAt         DateTime           @updatedAt            @map("updated_at")
+
+  organization      Organization       @relation(fields: [organizationId], references: [id])
+
+  @@map("categorization_configs")
 }
 
 model TicketTag {

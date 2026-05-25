@@ -6,6 +6,7 @@ import { getOrgContext } from '@/src/lib/tenant';
 import { requirePermission } from '@/src/lib/permissions';
 import { addTicketMessage } from '@/src/services/tickets/messages';
 import { updateTicket, InvalidStatusTransitionError } from '@/src/services/tickets/update';
+import { categorizeTicket } from '@/src/services/categorization/run';
 import { prisma } from '@/src/lib/prisma';
 
 async function ticketByCodeOr404(organizationId: string, code: string) {
@@ -164,4 +165,26 @@ export async function changeQueueAction(formData: FormData) {
     queueId: parsed.data.queueId || null,
   });
   revalidatePath(`/tickets/${parsed.data.code}`);
+}
+
+export type RecategorizeState =
+  | { ok: true; engine: 'keywords' | 'ai' | 'none'; applied: string[]; reason?: string }
+  | { ok: false; error: string };
+
+/** Roda a categorização automática sob demanda neste ticket. */
+export async function recategorizeTicketAction(input: { code: string }): Promise<RecategorizeState> {
+  const ctx = await getOrgContext();
+  requirePermission(ctx.role, 'tickets:update');
+
+  const code = z.string().min(1).safeParse(input.code);
+  if (!code.success) return { ok: false, error: 'Ticket inválido.' };
+
+  try {
+    const ticket = await ticketByCodeOr404(ctx.organizationId, code.data);
+    const r = await categorizeTicket(ctx.organizationId, ticket.id, { source: 'manual' });
+    revalidatePath(`/tickets/${code.data}`);
+    return { ok: true, engine: r.engine, applied: r.applied, reason: r.reason };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
 }

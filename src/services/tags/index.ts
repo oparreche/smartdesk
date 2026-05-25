@@ -13,9 +13,50 @@ export async function listTags(organizationId: string) {
       id: true,
       name: true,
       color: true,
+      description: true,
+      keywords: true,
+      minKeywordMatches: true,
+      autoCategorize: true,
       createdAt: true,
       _count: { select: { tickets: true } },
     },
+  });
+}
+
+export async function updateTagCategorization(
+  organizationId: string,
+  actorUserId: string,
+  tagId: string,
+  input: {
+    description: string | null;
+    keywords: string[];
+    minKeywordMatches: number;
+    autoCategorize: boolean;
+  },
+): Promise<void> {
+  const existing = await prisma.tag.findFirst({
+    where: { id: tagId, organizationId },
+    select: { id: true, name: true },
+  });
+  if (!existing) throw new Error('Tag não encontrada');
+
+  await prisma.tag.update({
+    where: { id: tagId },
+    data: {
+      description: input.description,
+      keywords: input.keywords as Prisma.InputJsonValue,
+      minKeywordMatches: Math.min(10, Math.max(1, input.minKeywordMatches)),
+      autoCategorize: input.autoCategorize,
+    },
+  });
+
+  await audit({
+    organizationId,
+    actorUserId,
+    action: 'tag.categorization_updated',
+    resourceType: 'tag',
+    resourceId: tagId,
+    diff: { after: { autoCategorize: input.autoCategorize, keywords: input.keywords.length, minKeywordMatches: input.minKeywordMatches } },
   });
 }
 

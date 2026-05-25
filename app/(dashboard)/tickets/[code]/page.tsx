@@ -11,6 +11,8 @@ import { EmailBody } from './email-body';
 import { KbSuggestions } from './kb-suggestions';
 import { TicketActionsBar } from './ticket-actions-bar';
 import { DeleteTicketButton } from '../delete-ticket-button';
+import { RecategorizeButton } from './recategorize-button';
+import { getCategorizationConfig } from '@/src/services/categorization/config';
 import { CopilotDrawer } from './copilot-drawer';
 import { TicketContextPanel } from '@/src/components/layouts-builder/context-panel';
 import { isAiConfigured } from '@/src/lib/gemini';
@@ -60,6 +62,8 @@ export default async function TicketDetailPage(props: { params: Promise<{ code: 
       select: { id: true },
     }),
   ]);
+
+  const categorization = await getCategorizationConfig(ctx.organizationId);
 
   const macrosRaw = await listMacros(ctx.organizationId, true);
   const macros: MacroOption[] = macrosRaw.map((m) => ({
@@ -126,9 +130,14 @@ export default async function TicketDetailPage(props: { params: Promise<{ code: 
           canUpdate={can(ctx.role, 'tickets:update')}
           canAssign={can(ctx.role, 'tickets:assign')}
         />
-        {can(ctx.role, 'tickets:update') ? (
-          <DeleteTicketButton ticketId={ticket.id} variant="bar" redirectTo="/tickets" />
-        ) : null}
+        <div className="flex items-center gap-2">
+          {categorization.enabled && can(ctx.role, 'tickets:update') ? (
+            <RecategorizeButton code={ticket.code} />
+          ) : null}
+          {can(ctx.role, 'tickets:update') ? (
+            <DeleteTicketButton ticketId={ticket.id} variant="bar" redirectTo="/tickets" />
+          ) : null}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">

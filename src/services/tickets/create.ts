@@ -110,6 +110,14 @@ export async function createTicket(
     logger.warn({ err, ticketId: ticket.id }, 'runRules on ticket_created failed (continuing)');
   }
 
+  // Categorização automática por tag (keywords/Gemini), se habilitada pelo tenant.
+  try {
+    const { categorizeTicket } = await import('@/src/services/categorization/run');
+    await categorizeTicket(organizationId, ticket.id, { source: 'auto' });
+  } catch (err) {
+    logger.warn({ err, ticketId: ticket.id }, 'auto-categorization failed (continuing)');
+  }
+
   // Dispara integrações com triggerEvents incluindo "ticket.created" / "form.submitted"
   const triggerEvent = input.origin === 'form' ? 'form.submitted' : 'ticket.created';
   const integrations = await listEnabledForEvent(organizationId, triggerEvent);
