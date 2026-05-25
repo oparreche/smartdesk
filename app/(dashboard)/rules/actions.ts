@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getOrgContext } from '@/src/lib/tenant';
 import { requirePermission } from '@/src/lib/permissions';
-import { createRule, updateRule, deleteRule } from '@/src/services/rules/crud';
+import { createRule, updateRule, deleteRule, setRuleEnabled } from '@/src/services/rules/crud';
 import { RuleDefinitionSchema } from '@/src/services/rules/schema';
 
 export type CreateState = { ok: true; id: string } | { ok: false; error: string };
@@ -82,4 +82,31 @@ export async function deleteRuleAction(form: FormData): Promise<void> {
   await deleteRule(ctx.organizationId, ctx.userId, parsed.data.id);
   revalidatePath('/rules');
   redirect('/rules');
+}
+
+const ToggleInput = z.object({
+  id: z.string().uuid(),
+  enabled: z.union([z.literal('true'), z.literal('false')]),
+});
+
+/** Liga/desliga uma regra direto da lista (sem redirect). */
+export async function toggleRuleAction(form: FormData): Promise<void> {
+  const ctx = await getOrgContext();
+  requirePermission(ctx.role, 'rules:write');
+
+  const parsed = ToggleInput.safeParse({ id: form.get('id'), enabled: form.get('enabled') });
+  if (!parsed.success) return;
+  await setRuleEnabled(ctx.organizationId, ctx.userId, parsed.data.id, parsed.data.enabled === 'true');
+  revalidatePath('/rules');
+}
+
+/** Exclui a partir da lista (sem redirect, só revalida). */
+export async function deleteRuleFromListAction(form: FormData): Promise<void> {
+  const ctx = await getOrgContext();
+  requirePermission(ctx.role, 'rules:write');
+
+  const parsed = DeleteInput.safeParse({ id: form.get('id') });
+  if (!parsed.success) return;
+  await deleteRule(ctx.organizationId, ctx.userId, parsed.data.id);
+  revalidatePath('/rules');
 }

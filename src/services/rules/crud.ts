@@ -13,10 +13,37 @@ export async function listRules(organizationId: string) {
       name: true,
       enabled: true,
       trigger: true,
+      conditions: true,
+      actions: true,
       runOrder: true,
       stopAfterMatch: true,
       updatedAt: true,
     },
+  });
+}
+
+/** Liga/desliga uma regra sem abrir o editor. */
+export async function setRuleEnabled(
+  organizationId: string,
+  actorUserId: string,
+  ruleId: string,
+  enabled: boolean,
+): Promise<void> {
+  const existing = await prisma.automationRule.findFirst({
+    where: { id: ruleId, organizationId, deletedAt: null },
+    select: { id: true, enabled: true, name: true },
+  });
+  if (!existing) throw new Error('Regra não encontrada');
+  if (existing.enabled === enabled) return;
+
+  await prisma.automationRule.update({ where: { id: ruleId }, data: { enabled } });
+  await audit({
+    organizationId,
+    actorUserId,
+    action: enabled ? 'rule.enabled' : 'rule.disabled',
+    resourceType: 'rule',
+    resourceId: ruleId,
+    diff: { before: { enabled: existing.enabled }, after: { enabled } },
   });
 }
 
