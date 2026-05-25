@@ -64,6 +64,8 @@ model Organization {
   apiKeys             ApiKey[]
   whatsappTemplates   WhatsappTemplate[]
   whatsappTemplateSends WhatsappTemplateSend[]
+  chatbotConfigs      ChatbotConfig[]
+  chatbotSessions     ChatbotSession[]
 
   @@map("organizations")
 }
@@ -766,6 +768,8 @@ model WhatsappConnection {
   organization         Organization        @relation(fields: [organizationId], references: [id])
   templates            WhatsappTemplate[]
   templateSends        WhatsappTemplateSend[]
+  chatbotConfig        ChatbotConfig?
+  chatbotSessions      ChatbotSession[]
 
   @@unique([organizationId, phoneNumberId])
   @@map("whatsapp_connections")
@@ -1248,4 +1252,86 @@ model RateLimitHit {
 
   @@index([bucket, hitAt])
   @@map("rate_limit_hits")
+}
+
+// =========================
+// Chatbot (pré-ticket) — atende WhatsApp via Gemini, coleta campos
+// e escala pra ticket quando necessário.
+// =========================
+
+model ChatbotConfig {
+  id                    String               @id @default(uuid()) @db.Char(36)
+  organizationId        String               @map("organization_id") @db.Char(36)
+  connectionId          String               @unique               @map("connection_id") @db.Char(36)
+
+  enabled               Boolean              @default(false)
+
+  // Greeting enviado na primeira mensagem da sessão (antes do LLM)
+  greeting              String               @db.Text
+
+  // Prompt do sistema — instruções de tom, papel, conhecimento de domínio
+  systemPrompt          String               @db.Text
+
+  // Lista de campos obrigatórios pra abrir ticket:
+  // [{ key, label, question, type: 'text'|'email'|'phone'|'cpf', required: bool }]
+  requiredFields        Json                 @map("required_fields")
+
+  // Palavras-chave que forçam escalonamento imediato
+  escalationKeywords    Json                 @map("escalation_keywords")
+
+  // Máximo de turnos antes de forçar escalonamento (proteção)
+  maxTurns              Int                  @default(20)              @map("max_turns")
+
+  // Chave Gemini custom do tenant (criptografada). Vazio = usa GEMINI_API_KEY global.
+  geminiApiKeyEnc       String?              @db.Text                  @map("gemini_api_key_enc")
+  geminiApiKeyNonce     String?                                        @map("gemini_api_key_nonce")
+  geminiModel           String?              @db.VarChar(80)           @map("gemini_model")
+
+  createdAt             DateTime             @default(now())           @map("created_at")
+  updatedAt             DateTime             @updatedAt                @map("updated_at")
+
+  organization          Organization         @relation(fields: [organizationId], references: [id])
+  connection            WhatsappConnection   @relation(fields: [connectionId], references: [id])
+
+  @@index([organizationId])
+  @@map("chatbot_configs")
+}
+
+model ChatbotSession {
+  id              String                @id @default(uuid()) @db.Char(36)
+  organizationId  String                @map("organization_id") @db.Char(36)
+  connectionId    String                @map("connection_id") @db.Char(36)
+
+  fromPhone       String                @map("from_phone") @db.VarChar(40)
+  requesterId     String?               @map("requester_id") @db.Char(36)
+
+  state           ChatbotSessionState   @default(active)
+  turns           Int                   @default(0)
+
+  // Campos já coletados: { key: value }
+  collectedFields Json?                 @map("collected_fields")
+
+  // Histórico de mensagens: [{ role: 'user'|'model', text, at: ISO }]
+  // Limitado a últimas 30 mensagens (LLM context window).
+  messages        Json
+
+  ticketId        String?               @map("ticket_id") @db.Char(36)
+
+  startedAt       DateTime              @default(now())             @map("started_at")
+  lastMessageAt   DateTime              @default(now())             @map("last_message_at")
+  completedAt    DateTime?                                          @map("completed_at")
+
+  organization    Organization          @relation(fields: [organizationId], references: [id])
+  connection      WhatsappConnection    @relation(fields: [connectionId], references: [id])
+
+  @@unique([connectionId, fromPhone, state])
+  @@index([organizationId, lastMessageAt])
+  @@map("chatbot_sessions")
+}
+
+enum ChatbotSessionState {
+  active        // bot atendendo
+  escalated     // abriu ticket, bot saiu
+  abandoned     // user parou de responder
+  completed     // bot resolveu sem precisar abrir ticket (futuro)
 }

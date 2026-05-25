@@ -37,12 +37,20 @@ export default async function WhatsappSettingsPage() {
               mensagens como tickets e responder dentro do SmartDesk.
             </p>
           </div>
-          <Link
-            href="/settings/whatsapp/templates"
-            className="rounded-sm border border-border bg-surface px-3 py-2 text-xs font-medium text-foreground-secondary transition-colors hover:border-primary/40 hover:text-primary"
-          >
-            Templates de mensagem →
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/settings/whatsapp/chatbot"
+              className="rounded-sm border border-border bg-surface px-3 py-2 text-xs font-medium text-foreground-secondary transition-colors hover:border-primary/40 hover:text-primary"
+            >
+              Chatbot →
+            </Link>
+            <Link
+              href="/settings/whatsapp/templates"
+              className="rounded-sm border border-border bg-surface px-3 py-2 text-xs font-medium text-foreground-secondary transition-colors hover:border-primary/40 hover:text-primary"
+            >
+              Templates de mensagem →
+            </Link>
+          </div>
         </div>
       </header>
 

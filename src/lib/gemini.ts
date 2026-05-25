@@ -29,25 +29,31 @@ type CompletionInput = {
   messages: GeminiMessage[];
   maxTokens?: number;
   temperature?: number;
+  /** Override por tenant. Se omitido, usa env.GEMINI_API_KEY. */
+  apiKey?: string;
+  /** Override do model. Se omitido, usa env.GEMINI_MODEL. */
+  model?: string;
 };
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const TIMEOUT_MS = 30_000;
 
 export async function complete(input: CompletionInput): Promise<string> {
-  if (!env.GEMINI_API_KEY) throw new AiNotConfiguredError();
+  const apiKey = input.apiKey ?? env.GEMINI_API_KEY;
+  if (!apiKey) throw new AiNotConfiguredError();
+  const model = input.model ?? env.GEMINI_MODEL;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const url = `${API_BASE}/${encodeURIComponent(env.GEMINI_MODEL)}:generateContent`;
+    const url = `${API_BASE}/${encodeURIComponent(model)}:generateContent`;
     const res = await fetch(url, {
       method: 'POST',
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
-        'x-goog-api-key': env.GEMINI_API_KEY,
+        'x-goog-api-key': apiKey,
       },
       body: JSON.stringify({
         ...(input.system

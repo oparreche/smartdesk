@@ -112,6 +112,33 @@ async function ingestMessage(
   const body = extractBody(msg);
   const subject = buildSubject(msg, contactName);
 
+  // Antes de criar/anexar a ticket, tenta passar pelo chatbot. Se ele responder, sai daqui
+  // e NÃO cria ticket (até decidir escalar). O chatbot grava sua própria sessão.
+  if (body && msg.id) {
+    try {
+      const { runChatbotTurn } = await import('@/src/services/chatbot/run');
+      const bot = await runChatbotTurn({
+        organizationId,
+        connectionId,
+        fromPhone,
+        contactName,
+        text: body,
+        waMessageId: msg.id,
+      });
+      if (bot.handled && !bot.escalated) {
+        // Conversa segue no chatbot — não materializa ticket ainda
+        return null;
+      }
+      if (bot.handled && bot.escalated && bot.ticketCode) {
+        // Bot escalou e já criou ticket — devolve ele e segue pra anexar a mensagem
+        // que o usuário enviou (a mensagem atual) no ticket recém-criado.
+        // Continuamos o fluxo abaixo, mas force a busca pelo ticket criado.
+      }
+    } catch (err) {
+      logger.warn({ err, connectionId }, 'chatbot turn failed (continuing to ticket path)');
+    }
+  }
+
   // Resolve requester por phone
   const requester = await findOrCreateRequester(organizationId, {
     phone: fromPhone,
