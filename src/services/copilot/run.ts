@@ -33,14 +33,33 @@ export async function runCopilotTurn(input: {
   userId: string;
   conversationId?: string;
   message: string;
+  /** Se setado, conversa fica linkada ao ticket (find-or-create por user+ticket) */
+  ticketId?: string;
+  /** Texto adicional injetado no system prompt (ex: contexto do ticket atual) */
+  extraSystemContext?: string;
 }): Promise<CopilotTurnResult> {
   // 1) Conversation: cria se não existe
   let conversationId = input.conversationId;
+  if (!conversationId && input.ticketId) {
+    // Find-or-create por ticket+user pra preservar contexto entre aberturas do drawer
+    const existing = await prisma.copilotConversation.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        userId: input.userId,
+        ticketId: input.ticketId,
+        archivedAt: null,
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true },
+    });
+    if (existing) conversationId = existing.id;
+  }
   if (!conversationId) {
     const conv = await prisma.copilotConversation.create({
       data: {
         organizationId: input.organizationId,
         userId: input.userId,
+        ticketId: input.ticketId ?? null,
         title: input.message.slice(0, 80) || 'Nova conversa',
       },
       select: { id: true },
@@ -83,10 +102,13 @@ export async function runCopilotTurn(input: {
 
   const systemFull = [
     systemBase,
+    input.extraSystemContext
+      ? `\n=== TICKET ATUAL EM FOCO ===\n${input.extraSystemContext}\n=== FIM DO TICKET ===`
+      : '',
     '',
-    '=== CONTEXTO (use APENAS isso) ===',
+    '=== FONTES INDEXADAS (cite com [n]) ===',
     contextBlocks || '(sem fontes relevantes encontradas)',
-    '=== FIM DO CONTEXTO ===',
+    '=== FIM DAS FONTES ===',
   ].join('\n');
 
   // 7) Chama Gemini

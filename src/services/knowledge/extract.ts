@@ -90,3 +90,50 @@ import { createHash } from 'node:crypto';
 export function contentHash(text: string): string {
   return createHash('sha256').update(text).digest('hex');
 }
+
+/**
+ * Extrai texto de um arquivo baseado em filename + mimeType.
+ * Suporta: pdf, docx, md, txt.
+ */
+export async function extractFromBuffer(
+  buf: Buffer,
+  filename: string,
+  mimeType: string,
+): Promise<string> {
+  const lower = filename.toLowerCase();
+  const isPdf = mimeType.includes('pdf') || lower.endsWith('.pdf');
+  const isDocx =
+    mimeType.includes('officedocument.wordprocessingml') || lower.endsWith('.docx');
+  const isMd = lower.endsWith('.md') || lower.endsWith('.markdown') || mimeType.includes('markdown');
+  const isTxt = mimeType.startsWith('text/') || lower.endsWith('.txt');
+
+  if (isPdf) {
+    // dynamic import — pdf-parse-fork tem side-effects pesados, lazy load
+    const mod = (await import('pdf-parse-fork')) as unknown as { default: (b: Buffer) => Promise<{ text: string }> };
+    const r = await mod.default(buf);
+    return cleanText(r.text);
+  }
+  if (isDocx) {
+    const mod = (await import('mammoth')) as unknown as {
+      extractRawText: (opts: { buffer: Buffer }) => Promise<{ value: string }>;
+    };
+    const r = await mod.extractRawText({ buffer: buf });
+    return cleanText(r.value);
+  }
+  if (isMd || isTxt) {
+    return cleanText(buf.toString('utf-8'));
+  }
+  // Fallback: tenta decodificar como UTF-8 (talvez HTML salvo)
+  const asString = buf.toString('utf-8');
+  if (asString.includes('<') && asString.includes('>')) return htmlToText(asString);
+  return cleanText(asString);
+}
+
+function cleanText(s: string): string {
+  return s
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}

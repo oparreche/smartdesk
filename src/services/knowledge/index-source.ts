@@ -4,7 +4,8 @@ import { prisma } from '@/src/lib/prisma';
 import { logger } from '@/src/lib/logger';
 import { embedBatch } from '@/src/lib/gemini';
 import { chunkText, estimateTokens } from './chunk';
-import { contentHash, fetchUrlAsText, htmlToText } from './extract';
+import { contentHash, fetchUrlAsText, htmlToText, extractFromBuffer } from './extract';
+import { getObjectBuffer } from '@/src/lib/s3';
 
 /**
  * Indexa uma KnowledgeSource. Carrega o conteúdo conforme o tipo, chunka,
@@ -103,6 +104,7 @@ async function loadContent(src: {
   type: 'url' | 'kb_article' | 'ticket' | 'upload';
   sourceUrl: string | null;
   refId: string | null;
+  fileKey?: string | null;
   name: string;
   organizationId: string;
 }): Promise<LoadedContent | null> {
@@ -142,11 +144,23 @@ async function loadContent(src: {
     ];
     return { text: parts.join('\n'), label: `Ticket ${t.code}`, url: `/tickets/${t.code}` };
   }
-  if (src.type === 'upload') {
-    // Fase 2
-    return null;
+  if (src.type === 'upload' && src.fileKey) {
+    const buf = await getObjectBuffer(src.fileKey);
+    // O nome amigável já vem em src.name; mimetype derivamos pela extensão se não vier
+    const mimeType = guessMimeFromName(src.name);
+    const text = await extractFromBuffer(buf, src.name, mimeType);
+    return { text, label: src.name, url: null };
   }
   return null;
+}
+
+function guessMimeFromName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'text/markdown';
+  if (lower.endsWith('.txt')) return 'text/plain';
+  return 'application/octet-stream';
 }
 
 function stripHtmlMaybe(s: string): string {

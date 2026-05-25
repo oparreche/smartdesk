@@ -4,6 +4,7 @@ import { requirePermission } from '@/src/lib/permissions';
 import { prisma } from '@/src/lib/prisma';
 import { formatDateTime } from '@/src/lib/format';
 import { AddUrlForm } from './add-url-form';
+import { UploadFileForm } from './upload-form';
 import {
   reindexSourceAction,
   deleteSourceAction,
@@ -62,14 +63,17 @@ export default async function CopilotSourcesPage() {
           <p className="divider-eyebrow text-muted-foreground">
             <span className="numeral-serif text-[0.6875rem] text-primary">01</span>
             <span className="mx-1.5 opacity-40">·</span>
-            URL
+            URL ou arquivo
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Cole uma URL pública (ex.: doc do produto, FAQ, blog). Sistema baixa, extrai texto,
-            chunka e indexa em background. Re-index manual no botão Sync.
+            URL pública (ex.: doc do produto, FAQ, blog) — sistema baixa, extrai texto, chunka e
+            indexa. Ou suba PDF/DOCX/MD/TXT direto (max 25MB).
           </p>
         </header>
         <AddUrlForm />
+        <div className="border-t border-border-subtle pt-3">
+          <UploadFileForm />
+        </div>
       </section>
 
       <section className="card flex flex-col gap-4 p-5">
@@ -117,7 +121,7 @@ export default async function CopilotSourcesPage() {
               Fontes indexadas ({sources.length})
             </p>
             <p className="mt-1 text-[0.6875rem] text-muted-foreground">
-              URL {counts.url ?? 0} · KB {counts.kb_article ?? 0} · Ticket {counts.ticket ?? 0}
+              URL {counts.url ?? 0} · Upload {counts.upload ?? 0} · KB {counts.kb_article ?? 0} · Ticket {counts.ticket ?? 0}
             </p>
           </div>
         </header>

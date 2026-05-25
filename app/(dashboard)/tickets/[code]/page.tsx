@@ -10,6 +10,7 @@ import { AiAssist } from './ai-assist';
 import { EmailBody } from './email-body';
 import { KbSuggestions } from './kb-suggestions';
 import { TicketActionsBar } from './ticket-actions-bar';
+import { CopilotDrawer } from './copilot-drawer';
 import { TicketContextPanel } from '@/src/components/layouts-builder/context-panel';
 import { isAiConfigured } from '@/src/lib/gemini';
 import { listMacros, renderMacroBody } from '@/src/services/macros';
@@ -260,6 +261,7 @@ export default async function TicketDetailPage(props: { params: Promise<{ code: 
           </Card>
         </aside>
       </div>
+      <CopilotDrawer ticketCode={ticket.code} />
     </div>
   );
 }

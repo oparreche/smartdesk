@@ -6,6 +6,7 @@ import { getOrgContext } from '@/src/lib/tenant';
 import { requirePermission } from '@/src/lib/permissions';
 import { prisma } from '@/src/lib/prisma';
 import { enqueue } from '@/src/services/jobs/enqueue';
+import { putObject, buildKnowledgeKey } from '@/src/lib/s3';
 
 const AddUrlInput = z.object({
   url: z.string().url(),
@@ -139,6 +140,55 @@ export async function syncKbArticlesAction(): Promise<void> {
     });
   }
   revalidatePath('/copilot/sources');
+}
+
+export type UploadState = { ok: true; sourceId: string } | { ok: false; error: string };
+
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
+const ALLOWED_UPLOAD_EXTS = ['.pdf', '.docx', '.md', '.markdown', '.txt'];
+
+/** Recebe um File da UI, faz upload pro MinIO e cria KnowledgeSource type=upload. */
+export async function uploadFileSourceAction(
+  _prev: UploadState | undefined,
+  form: FormData,
+): Promise<UploadState> {
+  const ctx = await getOrgContext();
+  requirePermission(ctx.role, 'organization:manage');
+
+  const file = form.get('file');
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: 'Arquivo inválido' };
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return { ok: false, error: `Arquivo passou de 25MB (${Math.round(file.size / 1024 / 1024)}MB)` };
+  }
+  const lowerName = file.name.toLowerCase();
+  const okExt = ALLOWED_UPLOAD_EXTS.some((e) => lowerName.endsWith(e));
+  if (!okExt) {
+    return { ok: false, error: `Extensão não suportada. Use: ${ALLOWED_UPLOAD_EXTS.join(', ')}` };
+  }
+
+  const buf = Buffer.from(await file.arrayBuffer());
+  const key = buildKnowledgeKey(ctx.organizationId, file.name);
+  await putObject({ key, body: buf, contentType: file.type || 'application/octet-stream' });
+
+  const src = await prisma.knowledgeSource.create({
+    data: {
+      organizationId: ctx.organizationId,
+      type: 'upload',
+      name: file.name,
+      fileKey: key,
+      status: 'pending',
+    },
+    select: { id: true },
+  });
+  await enqueue({
+    type: 'knowledge.index_source',
+    payload: { sourceId: src.id },
+    organizationId: ctx.organizationId,
+  });
+  revalidatePath('/copilot/sources');
+  return { ok: true, sourceId: src.id };
 }
 
 /** Indexa todos os tickets fechados/resolvidos como sources do tipo ticket. */
