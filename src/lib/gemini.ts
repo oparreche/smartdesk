@@ -116,7 +116,7 @@ export async function embed(input: {
 }): Promise<number[]> {
   const apiKey = input.apiKey ?? env.GEMINI_API_KEY;
   if (!apiKey) throw new AiNotConfiguredError();
-  const model = input.model ?? 'text-embedding-004';
+  const model = input.model ?? 'gemini-embedding-001';
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -156,7 +156,7 @@ export async function embedBatch(input: {
 }): Promise<number[][]> {
   const apiKey = input.apiKey ?? env.GEMINI_API_KEY;
   if (!apiKey) throw new AiNotConfiguredError();
-  const model = input.model ?? 'text-embedding-004';
+  const model = input.model ?? 'gemini-embedding-001';
   if (input.texts.length === 0) return [];
 
   const out: number[][] = [];
