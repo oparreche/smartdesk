@@ -100,11 +100,12 @@ export function RoutingRuleDialog({
   const [priority, setPriority] = useState('high');
   const [tag, setTag] = useState('');
   const [ignoreScope, setIgnoreScope] = useState<'email' | 'domain'>('email');
+  const [purgeExisting, setPurgeExisting] = useState(false);
   const [stopAfter, setStopAfter] = useState(false);
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<
     | { kind: 'routing'; ruleId: string; matchValue: string }
-    | { kind: 'ignore'; pattern: string }
+    | { kind: 'ignore'; pattern: string; purged: number }
     | null
   >(null);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +121,7 @@ export function RoutingRuleDialog({
       setPriority('high');
       setTag('');
       setIgnoreScope('email');
+      setPurgeExisting(false);
       setStopAfter(false);
       setResult(null);
       setError(null);
@@ -150,8 +152,8 @@ export function RoutingRuleDialog({
     if (actionType === 'ignore') {
       const d = detail;
       startTransition(async () => {
-        const r = await createIgnoreRuleFromTicketAction({ ticketId: d.ticketId, scope: ignoreScope });
-        if (r.ok) setResult({ kind: 'ignore', pattern: r.pattern });
+        const r = await createIgnoreRuleFromTicketAction({ ticketId: d.ticketId, scope: ignoreScope, purgeExisting });
+        if (r.ok) setResult({ kind: 'ignore', pattern: r.pattern, purged: r.purged });
         else setError(r.error);
       });
       return;
@@ -248,6 +250,15 @@ export function RoutingRuleDialog({
                   ✓ Regra criada — emails de{' '}
                   <span className="font-mono font-medium">{result.pattern}</span> não criarão tickets
                   (Gmail e IMAP).
+                  {result.purged > 0 ? (
+                    <>
+                      {' '}
+                      <span className="text-muted-foreground">
+                        {result.purged} ticket{result.purged === 1 ? '' : 's'} existente
+                        {result.purged === 1 ? '' : 's'} excluído{result.purged === 1 ? '' : 's'}.
+                      </span>
+                    </>
+                  ) : null}
                 </p>
                 <div className="flex items-center justify-end gap-2">
                   <button
@@ -399,6 +410,21 @@ export function RoutingRuleDialog({
                 <p className="text-[0.6875rem] text-muted-foreground">
                   Emails que casarem serão descartados na entrada — não criam nem reabrem tickets.
                 </p>
+                <label className="mt-1 flex items-start gap-2 rounded-sm border border-destructive/30 bg-destructive-soft/40 px-2.5 py-2 text-xs text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={purgeExisting}
+                    onChange={(e) => setPurgeExisting(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    Excluir também os tickets já existentes deste{' '}
+                    {ignoreScope === 'domain' ? 'domínio' : 'remetente'}.
+                    <span className="block text-[0.6875rem] text-muted-foreground">
+                      Exclusão reversível (soft delete) — some das listas, mas fica no histórico.
+                    </span>
+                  </span>
+                </label>
               </div>
             )}
 

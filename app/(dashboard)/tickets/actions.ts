@@ -12,7 +12,7 @@ import {
 } from '@/src/services/saved-filters';
 import { createRule } from '@/src/services/rules/crud';
 import { createRule as createEmailRoutingRule } from '@/src/services/gmail/routing';
-import { softDeleteTicket, TicketNotFoundError } from '@/src/services/tickets/delete';
+import { softDeleteTicket, softDeleteTicketsByRequesterEmail, TicketNotFoundError } from '@/src/services/tickets/delete';
 import type { Action } from '@/src/services/rules/schema';
 import type { TicketStatus } from '@prisma/client';
 
@@ -192,10 +192,11 @@ export async function createRoutingRuleFromTicketAction(
 const IgnoreRuleInput = z.object({
   ticketId: z.string().uuid(),
   scope: z.enum(['email', 'domain']),
+  purgeExisting: z.boolean().optional(),
 });
 
 export type IgnoreRuleState =
-  | { ok: true; pattern: string }
+  | { ok: true; pattern: string; purged: number }
   | { ok: false; error: string };
 
 /**
@@ -205,7 +206,7 @@ export type IgnoreRuleState =
  * Só faz sentido para email; WhatsApp/telefone não passa por essas regras.
  */
 export async function createIgnoreRuleFromTicketAction(
-  input: { ticketId: string; scope: 'email' | 'domain' },
+  input: { ticketId: string; scope: 'email' | 'domain'; purgeExisting?: boolean },
 ): Promise<IgnoreRuleState> {
   const ctx = await getOrgContext();
   requirePermission(ctx.role, 'tickets:update');
@@ -224,9 +225,9 @@ export async function createIgnoreRuleFromTicketAction(
     return { ok: false, error: 'O solicitante não tem email válido para ignorar.' };
   }
 
+  const domain = email.split('@')[1];
   let pattern: string;
   if (parsed.data.scope === 'domain') {
-    const domain = email.split('@')[1];
     if (!domain) return { ok: false, error: 'Não foi possível extrair o domínio.' };
     pattern = `*@${domain}`;
   } else {
@@ -239,8 +240,17 @@ export async function createIgnoreRuleFromTicketAction(
       pattern,
       note: `Ignorar — criado a partir do ticket ${ticket.code}`,
     });
+
+    let purged = 0;
+    if (parsed.data.purgeExisting) {
+      const match = parsed.data.scope === 'domain' ? { domain: domain! } : { email };
+      const r = await softDeleteTicketsByRequesterEmail(ctx.organizationId, ctx.userId, match);
+      purged = r.count;
+    }
+
     revalidatePath('/settings/gmail');
-    return { ok: true, pattern };
+    revalidatePath('/tickets');
+    return { ok: true, pattern, purged };
   } catch (err) {
     return { ok: false, error: (err as Error).message };
   }

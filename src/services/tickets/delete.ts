@@ -45,3 +45,41 @@ export async function softDeleteTicket(
 
   return { code: ticket.code };
 }
+
+/**
+ * Soft delete em massa de tickets pelo email do solicitante (exato) ou domínio.
+ * Usado ao criar uma regra de "ignorar remetente" com a opção de limpar o histórico.
+ * Registra uma única entrada de audit com a contagem.
+ */
+export async function softDeleteTicketsByRequesterEmail(
+  organizationId: string,
+  actorUserId: string,
+  match: { email: string } | { domain: string },
+): Promise<{ count: number }> {
+  const requesterWhere =
+    'email' in match
+      ? { email: match.email.trim().toLowerCase() }
+      : { email: { endsWith: `@${match.domain.trim().toLowerCase()}` } };
+
+  const tickets = await prisma.ticket.findMany({
+    where: { organizationId, deletedAt: null, requester: requesterWhere },
+    select: { id: true },
+  });
+  if (tickets.length === 0) return { count: 0 };
+
+  const now = new Date();
+  await prisma.ticket.updateMany({
+    where: { id: { in: tickets.map((t) => t.id) } },
+    data: { deletedAt: now },
+  });
+
+  await audit({
+    organizationId,
+    actorUserId,
+    action: 'ticket.bulk_deleted',
+    resourceType: 'ticket',
+    diff: { after: { match, count: tickets.length, reason: 'ignore_sender' } },
+  });
+
+  return { count: tickets.length };
+}
