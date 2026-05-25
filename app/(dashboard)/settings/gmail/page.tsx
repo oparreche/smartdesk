@@ -187,8 +187,6 @@ export default async function GmailSettingsPage(props: {
               </ul>
             )}
           </section>
-
-          <RoutingSection rules={routingRules} />
         </div>
 
         <aside className="flex flex-col gap-4" data-anim="reveal" data-delay="2">
@@ -243,6 +241,8 @@ export default async function GmailSettingsPage(props: {
           </div>
         </aside>
       </div>
+
+      <RoutingSection rules={routingRules} />
     </div>
   );
 }
