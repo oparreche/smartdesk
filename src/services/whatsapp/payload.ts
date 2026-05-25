@@ -17,7 +17,7 @@ export type WaEntry = {
 
 export type WaChange = {
   field: string;
-  value: WaChangeValue;
+  value: WaChangeValue | WaTemplateStatusValue;
 };
 
 export type WaChangeValue = {
@@ -32,6 +32,16 @@ export type WaChangeValue = {
   }>;
   messages?: WaInboundMessage[];
   statuses?: WaStatusUpdate[];
+};
+
+/** Payload do field "message_template_status_update". */
+export type WaTemplateStatusValue = {
+  event: 'APPROVED' | 'REJECTED' | 'PAUSED' | 'DISABLED' | 'IN_APPEAL' | 'PENDING_DELETION' | string;
+  message_template_id: number | string;
+  message_template_name: string;
+  message_template_language: string;
+  reason?: string;
+  other_info?: { title?: string; description?: string };
 };
 
 export type WaInboundMessage = {
@@ -54,21 +64,42 @@ export type WaStatusUpdate = {
   timestamp: string;
   recipient_id: string;
   errors?: Array<{ code: number; title?: string; message?: string }>;
+  conversation?: {
+    id: string;
+    origin?: { type?: 'marketing' | 'utility' | 'authentication' | 'service' | string };
+    expiration_timestamp?: string;
+  };
+  pricing?: {
+    billable?: boolean;
+    pricing_model?: 'CBP' | 'PMP' | string;
+    category?: 'marketing' | 'utility' | 'authentication' | 'service' | string;
+  };
 };
 
 /**
- * Extrai mensagens inbound + status updates de um payload bruto.
+ * Extrai mensagens inbound + status updates + template status updates de um payload bruto.
  */
 export function extractEvents(payload: WaWebhookPayload): {
   messages: Array<{ phoneNumberId: string; message: WaInboundMessage; contactName?: string }>;
   statuses: Array<{ phoneNumberId: string; status: WaStatusUpdate }>;
+  templateUpdates: WaTemplateStatusValue[];
 } {
-  const messages: ReturnType<typeof extractEvents>['messages'] = [];
-  const statuses: ReturnType<typeof extractEvents>['statuses'] = [];
+  const messages: Array<{ phoneNumberId: string; message: WaInboundMessage; contactName?: string }> = [];
+  const statuses: Array<{ phoneNumberId: string; status: WaStatusUpdate }> = [];
+  const templateUpdates: WaTemplateStatusValue[] = [];
 
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
-      const v = change.value;
+      // Template status update — value tem shape diferente, sem metadata.phone_number_id
+      if (change.field === 'message_template_status_update') {
+        const tv = change.value as WaTemplateStatusValue;
+        if (tv && tv.message_template_id) {
+          templateUpdates.push(tv);
+        }
+        continue;
+      }
+
+      const v = change.value as WaChangeValue;
       const pnid = v?.metadata?.phone_number_id;
       if (!pnid) continue;
 
@@ -90,5 +121,5 @@ export function extractEvents(payload: WaWebhookPayload): {
     }
   }
 
-  return { messages, statuses };
+  return { messages, statuses, templateUpdates };
 }

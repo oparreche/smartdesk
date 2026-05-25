@@ -6,12 +6,19 @@ import { findOrCreateRequester } from '@/src/services/requesters/find-or-create'
 import { createTicket } from '@/src/services/tickets/create';
 import { audit } from '@/src/services/audit/log';
 import { runRules } from '@/src/services/rules/run';
-import { extractEvents, type WaWebhookPayload, type WaInboundMessage, type WaStatusUpdate } from './payload';
+import {
+  extractEvents,
+  type WaWebhookPayload,
+  type WaInboundMessage,
+  type WaStatusUpdate,
+  type WaTemplateStatusValue,
+} from './payload';
 import { normalizePhoneE164 } from './phone';
 
 export type IngestResult = {
   processedMessages: number;
   processedStatuses: number;
+  processedTemplateUpdates: number;
   tickets: Array<{ code: string; created: boolean }>;
 };
 
@@ -36,11 +43,11 @@ export async function ingestWhatsappWebhook(
     },
   });
   if (!conn || conn.deletedAt || conn.status !== 'active') {
-    return { processedMessages: 0, processedStatuses: 0, tickets: [] };
+    return { processedMessages: 0, processedStatuses: 0, processedTemplateUpdates: 0, tickets: [] };
   }
 
-  const result: IngestResult = { processedMessages: 0, processedStatuses: 0, tickets: [] };
-  const { messages, statuses } = extractEvents(payload);
+  const result: IngestResult = { processedMessages: 0, processedStatuses: 0, processedTemplateUpdates: 0, tickets: [] };
+  const { messages, statuses, templateUpdates } = extractEvents(payload);
 
   for (const { phoneNumberId, message, contactName } of messages) {
     if (phoneNumberId !== conn.phoneNumberId) continue;
@@ -62,6 +69,15 @@ export async function ingestWhatsappWebhook(
       result.processedStatuses += 1;
     } catch (err) {
       logger.warn({ err, waId: status.id }, 'whatsapp.ingest status failed');
+    }
+  }
+
+  for (const tu of templateUpdates) {
+    try {
+      await applyTemplateStatusUpdate(conn.organizationId, tu);
+      result.processedTemplateUpdates += 1;
+    } catch (err) {
+      logger.warn({ err, metaTemplateId: tu.message_template_id }, 'whatsapp.ingest template update failed');
     }
   }
 
@@ -237,30 +253,128 @@ function buildSubject(msg: WaInboundMessage, contactName: string | undefined): s
 }
 
 async function applyStatusUpdate(organizationId: string, status: WaStatusUpdate): Promise<void> {
-  // status.id é o wa_message_id da mensagem outbound que enviamos
+  // status.id é o wa_message_id da mensagem outbound que enviamos.
+  // Pode ser uma mensagem de ticket OU um envio de template.
+
+  // 1) Ticket message (canal regular)
   const msg = await prisma.ticketMessage.findFirst({
     where: { organizationId, waMessageId: status.id },
     select: { id: true, deliveryStatus: true },
   });
-  if (!msg) return;
-
-  let delivery: 'pending' | 'sent' | 'failed' | 'not_applicable';
-  switch (status.status) {
-    case 'sent': delivery = 'sent'; break;
-    case 'delivered':
-    case 'read':
-      delivery = 'sent'; // já é mais que sent — mantemos sent + registramos no payload do evento
-      break;
-    case 'failed': delivery = 'failed'; break;
-    default: return;
+  if (msg) {
+    let delivery: 'pending' | 'sent' | 'failed' | 'not_applicable';
+    switch (status.status) {
+      case 'sent': delivery = 'sent'; break;
+      case 'delivered':
+      case 'read':
+        delivery = 'sent';
+        break;
+      case 'failed': delivery = 'failed'; break;
+      default: return;
+    }
+    await prisma.ticketMessage.update({
+      where: { id: msg.id },
+      data: {
+        deliveryStatus: delivery,
+        deliveryError: status.errors?.[0]?.message ?? null,
+        sentAt: delivery === 'sent' ? new Date() : undefined,
+      },
+    });
   }
 
-  await prisma.ticketMessage.update({
-    where: { id: msg.id },
+  // 2) Template send — atualiza status + captura pricing/conversation
+  const send = await prisma.whatsappTemplateSend.findFirst({
+    where: { organizationId, waMessageId: status.id },
+    select: { id: true, status: true, costAmount: true },
+  });
+  if (send) {
+    const nextStatus =
+      status.status === 'failed' ? 'failed'
+      : status.status === 'read' ? 'read'
+      : status.status === 'delivered' ? 'delivered'
+      : status.status === 'sent' ? 'sent'
+      : send.status;
+
+    const timestampField =
+      nextStatus === 'failed' ? { failedAt: new Date() }
+      : nextStatus === 'read' ? { readAt: new Date() }
+      : nextStatus === 'delivered' ? { deliveredAt: new Date() }
+      : {};
+
+    // Cost: Meta não envia valor — derivamos do category + region (tabela local)
+    const computedCost =
+      status.pricing && send.costAmount == null
+        ? computeCost(status.pricing.category)
+        : undefined;
+
+    await prisma.whatsappTemplateSend.update({
+      where: { id: send.id },
+      data: {
+        status: nextStatus,
+        failureReason: status.errors?.[0]?.message?.slice(0, 1000) ?? undefined,
+        waConversationId: status.conversation?.id ?? undefined,
+        pricingCategory: status.pricing?.category ?? undefined,
+        pricingModel: status.pricing?.pricing_model ?? undefined,
+        ...(computedCost
+          ? { costAmount: computedCost.amount, costCurrency: computedCost.currency }
+          : {}),
+        ...timestampField,
+      },
+    });
+  }
+}
+
+/** Atualiza status do template local quando Meta envia message_template_status_update. */
+async function applyTemplateStatusUpdate(
+  organizationId: string,
+  tu: WaTemplateStatusValue,
+): Promise<void> {
+  const metaId = String(tu.message_template_id);
+  const tpl = await prisma.whatsappTemplate.findFirst({
+    where: { organizationId, metaTemplateId: metaId, deletedAt: null },
+    select: { id: true, status: true },
+  });
+  if (!tpl) {
+    logger.info({ organizationId, metaId, name: tu.message_template_name }, 'template not found locally, ignoring');
+    return;
+  }
+  const status = mapMetaEvent(tu.event);
+  await prisma.whatsappTemplate.update({
+    where: { id: tpl.id },
     data: {
-      deliveryStatus: delivery,
-      deliveryError: status.errors?.[0]?.message ?? null,
-      sentAt: delivery === 'sent' ? new Date() : undefined,
+      status,
+      rejectionReason: tu.reason?.slice(0, 1000) ?? null,
+      approvedAt: status === 'approved' ? new Date() : null,
     },
   });
+}
+
+function mapMetaEvent(e: string): 'approved' | 'rejected' | 'paused' | 'disabled' | 'pending' {
+  switch (e?.toUpperCase()) {
+    case 'APPROVED': return 'approved';
+    case 'REJECTED': return 'rejected';
+    case 'PAUSED': return 'paused';
+    case 'DISABLED':
+    case 'PENDING_DELETION': return 'disabled';
+    case 'IN_APPEAL': return 'rejected';
+    default: return 'pending';
+  }
+}
+
+/**
+ * Tabela de preços por categoria — fonte: Meta Pricing Updates Brasil (2025-2026, USD).
+ * Service inicia em 0; service conversations passam a ser cobradas apenas se origem
+ * marketing/utility/auth. Authentication-international tem rate maior, ignoramos por simplicidade.
+ */
+function computeCost(category: string | undefined): { amount: number; currency: string } | null {
+  if (!category) return null;
+  const c = category.toLowerCase();
+  const table: Record<string, number> = {
+    marketing: 0.0625,
+    utility: 0.0125,
+    authentication: 0.0315,
+    service: 0,
+  };
+  if (!(c in table)) return null;
+  return { amount: table[c]!, currency: 'USD' };
 }

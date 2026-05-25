@@ -170,6 +170,7 @@ export async function listTemplates(organizationId: string) {
       submittedAt: true,
       approvedAt: true,
       createdAt: true,
+      components: true,
       connection: {
         select: { id: true, displayPhoneNumber: true, businessAccountId: true },
       },

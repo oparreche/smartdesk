@@ -11,6 +11,7 @@ import {
   WaTemplateError,
   type TemplateComponent,
 } from '@/src/services/whatsapp/templates';
+import { sendTemplate } from '@/src/services/whatsapp/send-template';
 
 const CreateInput = z.object({
   connectionId: z.string().uuid(),
@@ -104,4 +105,57 @@ export async function deleteTemplateAction(form: FormData): Promise<void> {
   if (!parsed.success) return;
   await deleteTemplate(ctx.organizationId, ctx.userId, parsed.data.id);
   revalidatePath('/settings/whatsapp/templates');
+}
+
+const SendInput = z.object({
+  templateId: z.string().uuid(),
+  recipientPhone: z.string().min(8).max(40),
+  recipientName: z.string().max(200).optional(),
+  variables: z.record(z.string(), z.string().max(2000)).optional(),
+});
+
+export type SendTemplateState =
+  | { ok: true; waMessageId: string }
+  | { ok: false; error: string };
+
+export async function sendTemplateAction(
+  _prev: SendTemplateState | undefined,
+  form: FormData,
+): Promise<SendTemplateState> {
+  const ctx = await getOrgContext();
+  requirePermission(ctx.role, 'whatsapp:manage');
+
+  // variables vêm como var_1, var_2 etc no FormData
+  const variables: Record<string, string> = {};
+  for (const [k, v] of form.entries()) {
+    if (k.startsWith('var_') && typeof v === 'string' && v.length > 0) {
+      variables[k.slice(4)] = v;
+    }
+  }
+
+  const parsed = SendInput.safeParse({
+    templateId: form.get('templateId'),
+    recipientPhone: form.get('recipientPhone'),
+    recipientName: form.get('recipientName') || undefined,
+    variables: Object.keys(variables).length > 0 ? variables : undefined,
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
+  }
+
+  try {
+    const r = await sendTemplate({
+      organizationId: ctx.organizationId,
+      templateId: parsed.data.templateId,
+      recipientPhone: parsed.data.recipientPhone,
+      recipientName: parsed.data.recipientName,
+      variables: parsed.data.variables,
+      sentByUserId: ctx.userId,
+    });
+    revalidatePath('/settings/whatsapp/templates');
+    if (!r.ok) return { ok: false, error: r.error };
+    return { ok: true, waMessageId: r.waMessageId };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
 }
