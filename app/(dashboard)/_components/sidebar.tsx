@@ -17,6 +17,7 @@ type NavItem = {
 const NAV: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', permission: 'tickets:read', icon: 'dashboard' },
   { label: 'Tickets', href: '/tickets', permission: 'tickets:read', icon: 'tickets' },
+  { label: 'Copilot', href: '/copilot', permission: 'tickets:read', icon: 'rules' },
   { label: 'Integrações', href: '/integrations', permission: 'integrations:read', icon: 'integrations' },
   { label: 'Painel Inteligente', href: '/layouts', permission: 'layouts:read', icon: 'layouts' },
   { label: 'Formulários', href: '/forms', permission: 'forms:read', icon: 'forms' },

@@ -66,6 +66,11 @@ model Organization {
   whatsappTemplateSends WhatsappTemplateSend[]
   chatbotConfigs      ChatbotConfig[]
   chatbotSessions     ChatbotSession[]
+  knowledgeSources    KnowledgeSource[]
+  knowledgeChunks     KnowledgeChunk[]
+  copilotConfig       CopilotConfig?
+  copilotConversations CopilotConversation[]
+  copilotMessages     CopilotMessage[]
 
   @@map("organizations")
 }
@@ -98,6 +103,7 @@ model User {
   createdMacros       Macro[]
   notifications       Notification[]
   createdTemplates    WhatsappTemplate[]
+  copilotConversations CopilotConversation[]
 
   @@map("users")
 }
@@ -1304,6 +1310,131 @@ enum ChatbotMode {
   off
   scripted
   llm
+}
+
+// =========================
+// Copilot interno (RAG) — atendentes perguntam, bot busca em docs/KB/tickets
+// =========================
+
+model KnowledgeSource {
+  id              String                @id @default(uuid()) @db.Char(36)
+  organizationId  String                                                @map("organization_id") @db.Char(36)
+
+  type            KnowledgeSourceType
+  name            String                @db.VarChar(200)
+  sourceUrl       String?               @db.VarChar(1000)               @map("source_url")
+  fileKey         String?               @db.VarChar(500)                @map("file_key")     // MinIO (Fase 2)
+  refId           String?               @db.VarChar(64)                 @map("ref_id")       // kb_article.id ou ticket.id
+
+  status          KnowledgeSourceStatus @default(pending)
+  error           String?               @db.Text
+  contentHash     String?               @db.VarChar(64)                 @map("content_hash") // dedup re-index
+  chunkCount      Int                   @default(0)                     @map("chunk_count")
+  lastIndexedAt   DateTime?                                             @map("last_indexed_at")
+
+  createdAt       DateTime              @default(now())                 @map("created_at")
+  updatedAt       DateTime              @updatedAt                      @map("updated_at")
+  deletedAt       DateTime?                                             @map("deleted_at")
+
+  organization    Organization          @relation(fields: [organizationId], references: [id])
+  chunks          KnowledgeChunk[]
+
+  @@index([organizationId, type])
+  @@index([organizationId, status])
+  @@map("knowledge_sources")
+}
+
+enum KnowledgeSourceType {
+  url
+  kb_article
+  ticket          // 1 source por ticket (quando habilitado)
+  upload          // Fase 2
+}
+
+enum KnowledgeSourceStatus {
+  pending
+  indexing
+  indexed
+  failed
+  stale           // conteúdo mudou; aguardando reindex
+}
+
+model KnowledgeChunk {
+  id              String                @id @default(uuid()) @db.Char(36)
+  organizationId  String                                                @map("organization_id") @db.Char(36)
+  sourceId        String                                                @map("source_id") @db.Char(36)
+
+  position        Int                                                                                       // ordem dentro do doc
+  text            String                @db.Text
+  tokens          Int                                                                                       // estimativa pra log/billing
+  embedding       Json                                                                                      // [number] length 768
+
+  refLabel        String?               @db.VarChar(200)                @map("ref_label")   // ex: "Política de devolução"
+  refUrl          String?               @db.VarChar(1000)               @map("ref_url")     // link pra fonte original (UI cita)
+
+  createdAt       DateTime              @default(now())                 @map("created_at")
+
+  organization    Organization          @relation(fields: [organizationId], references: [id])
+  source          KnowledgeSource       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, sourceId])
+  @@map("knowledge_chunks")
+}
+
+// Configuração de copilot por organização (1:1)
+model CopilotConfig {
+  id                    String         @id @default(uuid()) @db.Char(36)
+  organizationId        String         @unique                          @map("organization_id") @db.Char(36)
+  includeTicketHistory  Boolean        @default(false)                  @map("include_ticket_history")
+  systemPrompt          String         @db.Text                         @map("system_prompt")
+  geminiModel           String?        @db.VarChar(80)                  @map("gemini_model")
+  createdAt             DateTime       @default(now())                  @map("created_at")
+  updatedAt             DateTime       @updatedAt                       @map("updated_at")
+
+  organization          Organization   @relation(fields: [organizationId], references: [id])
+
+  @@map("copilot_configs")
+}
+
+model CopilotConversation {
+  id              String              @id @default(uuid()) @db.Char(36)
+  organizationId  String                                                @map("organization_id") @db.Char(36)
+  userId          String                                                @map("user_id") @db.Char(36)
+  title           String              @db.VarChar(200)
+  ticketId        String?             @db.Char(36)                      @map("ticket_id")   // se foi aberto do drawer (Fase 2)
+  createdAt       DateTime            @default(now())                   @map("created_at")
+  updatedAt       DateTime            @updatedAt                        @map("updated_at")
+  archivedAt      DateTime?                                             @map("archived_at")
+
+  organization    Organization        @relation(fields: [organizationId], references: [id])
+  user            User                @relation(fields: [userId], references: [id])
+  messages        CopilotMessage[]
+
+  @@index([organizationId, userId, updatedAt])
+  @@map("copilot_conversations")
+}
+
+model CopilotMessage {
+  id              String                @id @default(uuid()) @db.Char(36)
+  organizationId  String                                                @map("organization_id") @db.Char(36)
+  conversationId  String                                                @map("conversation_id") @db.Char(36)
+  role            CopilotMessageRole
+  content         String                @db.LongText
+  citations       Json?                                                                                  // [{ chunkId, sourceId, refLabel, refUrl, score }]
+  tokensUsed      Int?                                                                                   @map("tokens_used")
+  createdAt       DateTime              @default(now())                @map("created_at")
+
+  organization    Organization          @relation(fields: [organizationId], references: [id])
+  conversation    CopilotConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("copilot_messages")
+}
+
+enum CopilotMessageRole {
+  user
+  assistant
+  system
 }
 
 model ChatbotSession {

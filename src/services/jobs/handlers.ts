@@ -7,3 +7,4 @@ import '@/src/services/gmail/handlers-register';
 import '@/src/services/integrations/handlers-register';
 import '@/src/services/whatsapp/handlers-register';
 import '@/src/services/webhooks/handlers-register';
+import '@/src/services/knowledge/handlers-register';
