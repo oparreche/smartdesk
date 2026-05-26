@@ -74,23 +74,9 @@ export function AuthShell({
             </div>
           ) : null}
 
-          <footer className="mt-12 flex flex-col items-center gap-1.5 text-center text-[0.6875rem] text-muted-foreground">
-            <Link href="/" className="uppercase tracking-widest hover:text-foreground">
-              ↘ smartdesk.app
-            </Link>
-            <p>CNPJ 53.070.401/0001-84</p>
-            <a
-              href="https://wa.me/5511992061753"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 hover:text-foreground"
-            >
-              <span aria-hidden>✆</span> WhatsApp +55 11 99206-1753
-            </a>
-            <p className="text-muted-foreground/80">
-              powered by <span className="font-medium text-foreground-secondary">Opa Digital</span>
-            </p>
-          </footer>
+          <p className="mt-12 text-center text-[0.6875rem] uppercase tracking-widest text-muted-foreground">
+            <Link href="/" className="hover:text-foreground">↘ smartdesk.app</Link>
+          </p>
         </div>
       </main>
     </div>
