@@ -165,15 +165,31 @@ export default async function TicketsListPage(props: {
   }
 
   const now = new Date();
+  const isKanban = view === 'kanban';
 
   return (
-    <div className="flex w-full flex-col gap-6 px-8 py-8">
-      <header className="flex items-end justify-between border-b border-border pb-6">
+    <div
+      className={
+        isKanban
+          ? 'flex h-full w-full flex-col gap-3 overflow-hidden px-6 py-5'
+          : 'flex w-full flex-col gap-6 px-8 py-8'
+      }
+    >
+      <header
+        className={
+          isKanban
+            ? 'flex shrink-0 items-end justify-between gap-3'
+            : 'flex items-end justify-between border-b border-border pb-6'
+        }
+      >
         <div>
           <p className="divider-eyebrow text-muted-foreground">Workspace</p>
-          <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">Tickets</h1>
+          <h1 className={`font-display font-semibold tracking-tight ${isKanban ? 'mt-1 text-2xl' : 'mt-2 text-3xl'}`}>
+            Tickets
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {result.total} resultado{result.total === 1 ? '' : 's'} · página {result.page} de {result.totalPages}
+            {result.total} resultado{result.total === 1 ? '' : 's'}
+            {isKanban ? '' : ` · página ${result.page} de ${result.totalPages}`}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -187,13 +203,14 @@ export default async function TicketsListPage(props: {
         </div>
       </header>
 
+      <div className={isKanban ? 'flex shrink-0 flex-col gap-2' : 'contents'}>
       <SavedFiltersBar
         filters={savedFilters}
         canShare={can(ctx.role, 'organization:manage')}
         currentParams={currentParams}
       />
 
-      <form method="get" className="card flex flex-wrap items-end gap-3 p-4">
+      <form method="get" className={`card flex flex-wrap items-end gap-3 ${isKanban ? 'p-3' : 'p-4'}`}>
         <FilterField label="Busca">
           <input
             name="q"
@@ -279,25 +296,28 @@ export default async function TicketsListPage(props: {
           limpar
         </Link>
       </form>
+      </div>
 
       {view === 'kanban' ? (
-        <KanbanBoard
-          canMove={canRoute}
-          canRoute={canRoute}
-          tickets={result.rows.map<KanbanTicket>((r) => ({
-            id: r.id,
-            code: r.code,
-            subject: r.subject,
-            status: r.status,
-            priority: r.priority,
-            origin: r.origin,
-            updatedAt: r.updatedAt,
-            requesterName: r.requester.name,
-            requesterEmail: r.requester.email,
-            requesterPhone: r.requester.phone,
-            assigneeName: r.assignee?.name ?? null,
-          }))}
-        />
+        <div className="min-h-0 flex-1">
+          <KanbanBoard
+            canMove={canRoute}
+            canRoute={canRoute}
+            tickets={result.rows.map<KanbanTicket>((r) => ({
+              id: r.id,
+              code: r.code,
+              subject: r.subject,
+              status: r.status,
+              priority: r.priority,
+              origin: r.origin,
+              updatedAt: r.updatedAt,
+              requesterName: r.requester.name,
+              requesterEmail: r.requester.email,
+              requesterPhone: r.requester.phone,
+              assigneeName: r.assignee?.name ?? null,
+            }))}
+          />
+        </div>
       ) : (
       <section className="card overflow-hidden">
         <table className="w-full text-sm">

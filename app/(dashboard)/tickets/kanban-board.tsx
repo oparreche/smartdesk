@@ -95,8 +95,8 @@ export function KanbanBoard({
     : null;
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex min-h-5 items-center gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-2">
+      <div className="flex min-h-5 shrink-0 items-center gap-3">
         {error ? (
           <p role="alert" className="rounded-sm border border-destructive/30 bg-destructive-soft px-3 py-1.5 text-xs text-destructive">
             ⚠ {error}
@@ -108,7 +108,7 @@ export function KanbanBoard({
         ) : null}
       </div>
 
-      <div className="flex gap-3 overflow-x-auto pb-3">
+      <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto pb-2">
         {COLUMNS.map((col) => {
           const items = byStatus.get(col.status) ?? [];
           const badge = STATUS_BADGE[col.status];
@@ -138,7 +138,7 @@ export function KanbanBoard({
                 if (id && canMove) handleDrop(col.status, id);
               }}
               className={[
-                'flex w-72 shrink-0 flex-col overflow-hidden rounded-md border bg-surface-raised transition-all',
+                'flex h-full w-72 shrink-0 flex-col overflow-hidden rounded-md border bg-surface-raised transition-all',
                 isOver
                   ? 'border-primary shadow-md ring-2 ring-primary/25'
                   : 'border-border',
@@ -165,7 +165,7 @@ export function KanbanBoard({
                 </span>
               </header>
 
-              <div className="flex max-h-[calc(100dvh-22rem)] min-h-24 flex-col gap-1.5 overflow-y-auto px-2 pb-2">
+              <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2 pb-2">
                 {items.length === 0 && !canDropHere ? (
                   <p className="rounded-sm border border-dashed border-border bg-surface/50 p-4 text-center text-[0.6875rem] text-muted-foreground">
                     vazio
