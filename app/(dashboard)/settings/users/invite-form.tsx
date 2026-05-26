@@ -5,6 +5,9 @@ import { inviteAction, type InviteState } from './actions';
 
 const initial: InviteState | undefined = undefined;
 
+const inputClass =
+  'rounded-sm border border-border bg-surface-raised px-2.5 py-1.5 text-sm shadow-xs outline-none transition-colors focus:border-primary focus:bg-background';
+
 export function InviteForm() {
   const [state, formAction, pending] = useActionState(inviteAction, initial);
   const [copied, setCopied] = useState(false);
@@ -18,34 +21,33 @@ export function InviteForm() {
   }
 
   return (
-    <form action={formAction} className="flex flex-wrap items-end gap-3 rounded-md border border-border p-4">
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="text-xs text-muted-foreground">Email</span>
+    <form action={formAction} className="card flex flex-wrap items-end gap-3 p-4">
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs font-medium text-foreground-secondary">Email</span>
         <input
           name="email"
           type="email"
           required
           placeholder="convidado@empresa.com"
-          className="w-64 rounded-md border border-border px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary"
+          className={`${inputClass} w-64`}
         />
       </label>
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="text-xs text-muted-foreground">Papel</span>
-        <select
-          name="role"
-          defaultValue="agent"
-          className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm"
-        >
-          <option value="admin">Admin</option>
-          <option value="supervisor">Supervisor</option>
-          <option value="agent">Agent</option>
-          <option value="viewer">Viewer</option>
-        </select>
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs font-medium text-foreground-secondary">Papel</span>
+        <div className="relative">
+          <select name="role" defaultValue="agent" className={`${inputClass} appearance-none pr-8`}>
+            <option value="admin">Admin</option>
+            <option value="supervisor">Supervisor</option>
+            <option value="agent">Agent</option>
+            <option value="viewer">Viewer</option>
+          </select>
+          <span aria-hidden className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">▾</span>
+        </div>
       </label>
       <button
         type="submit"
         disabled={pending}
-        className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+        className="rounded-sm bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:shadow-md active:translate-y-px disabled:opacity-60"
       >
         {pending ? 'Gerando…' : 'Gerar convite'}
       </button>
@@ -57,22 +59,24 @@ export function InviteForm() {
             <input
               readOnly
               value={state.inviteUrl}
-              className="flex-1 rounded-md border border-border bg-muted/30 px-2 py-1 font-mono text-xs"
+              className="flex-1 rounded-sm border border-border bg-surface-sunken px-2.5 py-1.5 font-mono text-xs shadow-xs"
               onFocus={(e) => e.currentTarget.select()}
             />
             <button
               type="button"
               onClick={copyLink}
-              className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+              className="rounded-sm border border-border bg-surface px-2.5 py-1.5 text-xs text-foreground-secondary hover:bg-muted hover:text-foreground"
             >
-              {copied ? '✓' : 'Copiar'}
+              {copied ? '✓ copiado' : 'Copiar'}
             </button>
           </div>
         </div>
       ) : null}
 
       {state && !state.ok ? (
-        <p className="basis-full text-sm text-destructive" role="alert">{state.error}</p>
+        <p className="basis-full rounded-sm border border-destructive/30 bg-destructive-soft px-2.5 py-1.5 text-xs text-destructive" role="alert">
+          ⚠ {state.error}
+        </p>
       ) : null}
     </form>
   );

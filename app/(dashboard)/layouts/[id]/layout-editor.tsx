@@ -30,6 +30,14 @@ const BLOCK_TYPE_LABELS: Record<BlockType, string> = {
   action_button: 'Botão de ação',
 };
 
+const BLOCK_TYPE_ICON: Record<BlockType, string> = {
+  info_card: '▤',
+  metric: '＃',
+  table: '▦',
+  alert: '⚠',
+  action_button: '⬡',
+};
+
 export function LayoutEditor({ id, initialName, initialIsDefault, initialConfig }: Props) {
   const [name, setName] = useState(initialName);
   const [isDefault, setIsDefault] = useState(initialIsDefault);
@@ -85,66 +93,82 @@ export function LayoutEditor({ id, initialName, initialIsDefault, initialConfig 
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
-      <div className="flex flex-col gap-4">
-        {/* Cabeçalho */}
-        <section className="flex flex-wrap items-end gap-3 rounded-md border border-border p-4">
-          <label className="flex flex-1 flex-col gap-1 text-sm">
-            <span className="text-xs text-muted-foreground">Nome</span>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="rounded-md border border-border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
-            />
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={isDefault}
-              onChange={(e) => setIsDefault(e.target.checked)}
-              className="h-4 w-4"
-            />
-            Layout padrão
-          </label>
-          <button
-            type="button"
-            onClick={save}
-            disabled={pending}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-          >
-            {pending ? 'Salvando…' : 'Salvar'}
-          </button>
-          {saved ? <span className="text-sm text-green-700">Salvo ✓</span> : null}
-          {error ? <p className="basis-full text-sm text-destructive">{error}</p> : null}
-        </section>
-
-        {/* Lista de blocos */}
-        <section className="flex flex-col gap-3">
-          <header className="flex items-center justify-between">
-            <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-              Blocos ({blocks.length})
-            </h2>
-            <AddBlockMenu onAdd={addBlock} />
-          </header>
-
-          {blocks.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-              Layout vazio — adicione blocos para começar.
-            </p>
-          ) : (
-            blocks.map((b, idx) => (
-              <BlockEditor
-                key={b.id}
-                block={b}
-                isFirst={idx === 0}
-                isLast={idx === blocks.length - 1}
-                onMoveUp={() => moveBlock(b.id, 'up')}
-                onMoveDown={() => moveBlock(b.id, 'down')}
-                onRemove={() => removeBlock(b.id)}
-                onUpdate={(patch) => updateBlock(b.id, patch)}
+      <div className="flex flex-col gap-5">
+        {/* 01 — Identificação */}
+        <Section eyebrow="01" title="Identificação">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[2fr_auto]">
+            <Field label="Nome do painel">
+              <input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} className={inputClass} />
+            </Field>
+            <div className="flex items-end">
+              <Toggle
+                active={isDefault}
+                onChange={setIsDefault}
+                label="Layout padrão"
+                hint="usado quando nenhum outro casa"
               />
-            ))
+            </div>
+          </div>
+        </Section>
+
+        {/* 02 — Blocos */}
+        <Section
+          eyebrow="02"
+          title={`Blocos · ${blocks.length}`}
+          hint="Renderizados de cima pra baixo no painel do ticket."
+          right={<AddBlockMenu onAdd={addBlock} />}
+        >
+          {blocks.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 rounded-sm border border-dashed border-border bg-muted/20 px-6 py-12 text-center">
+              <span className="text-2xl">▤</span>
+              <p className="text-sm font-medium text-foreground">Painel vazio</p>
+              <p className="max-w-xs text-xs text-muted-foreground">
+                Adicione blocos (cards, métricas, tabelas, alertas) para montar o painel inteligente.
+              </p>
+            </div>
+          ) : (
+            <ol className="flex flex-col gap-2.5">
+              {blocks.map((b, idx) => (
+                <BlockEditor
+                  key={b.id}
+                  index={idx + 1}
+                  block={b}
+                  isFirst={idx === 0}
+                  isLast={idx === blocks.length - 1}
+                  onMoveUp={() => moveBlock(b.id, 'up')}
+                  onMoveDown={() => moveBlock(b.id, 'down')}
+                  onRemove={() => removeBlock(b.id)}
+                  onUpdate={(patch) => updateBlock(b.id, patch)}
+                />
+              ))}
+            </ol>
           )}
-        </section>
+        </Section>
+
+        {/* Footer de salvar (sticky) */}
+        <div className="sticky bottom-4 z-10 rounded-md border border-border bg-surface/95 px-4 py-3 shadow-md backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0 text-xs">
+              {error ? (
+                <span className="text-destructive">⚠ {error}</span>
+              ) : saved ? (
+                <span className="text-success">✓ Alterações salvas</span>
+              ) : (
+                <span className="text-muted-foreground">
+                  Edição local — clique em <span className="font-medium text-foreground">Salvar</span> pra publicar.
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={save}
+              disabled={pending}
+              className="inline-flex shrink-0 items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:shadow-md active:translate-y-px disabled:opacity-60"
+            >
+              {pending ? 'Salvando…' : 'Salvar painel'}
+            </button>
+          </div>
+        </div>
       </div>
 
       <PreviewPanel
@@ -166,26 +190,32 @@ function AddBlockMenu({ onAdd }: { onAdd: (type: BlockType) => void }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm hover:shadow-md"
       >
-        + Adicionar bloco
+        <span aria-hidden>＋</span> Adicionar bloco
       </button>
       {open ? (
-        <div className="absolute right-0 z-10 mt-1 w-56 rounded-md border border-border bg-background shadow-md">
-          {(Object.keys(BLOCK_TYPE_LABELS) as BlockType[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => {
-                onAdd(t);
-                setOpen(false);
-              }}
-              className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
-            >
-              {BLOCK_TYPE_LABELS[t]}
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} aria-hidden />
+          <div className="absolute right-0 z-20 mt-1.5 w-60 overflow-hidden rounded-md border border-border bg-surface shadow-lg">
+            {(Object.keys(BLOCK_TYPE_LABELS) as BlockType[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => {
+                  onAdd(t);
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+              >
+                <span aria-hidden className="flex h-6 w-6 items-center justify-center rounded-sm bg-primary-soft text-xs text-primary">
+                  {BLOCK_TYPE_ICON[t]}
+                </span>
+                {BLOCK_TYPE_LABELS[t]}
+              </button>
+            ))}
+          </div>
+        </>
       ) : null}
     </div>
   );
@@ -194,6 +224,7 @@ function AddBlockMenu({ onAdd }: { onAdd: (type: BlockType) => void }) {
 // ─── Block editor (switch por tipo) ──────────────────────────────
 
 function BlockEditor({
+  index,
   block,
   isFirst,
   isLast,
@@ -202,6 +233,7 @@ function BlockEditor({
   onRemove,
   onUpdate,
 }: {
+  index: number;
   block: Block;
   isFirst: boolean;
   isLast: boolean;
@@ -211,28 +243,50 @@ function BlockEditor({
   onUpdate: (patch: Partial<Block>) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const title =
+    ('title' in block && block.title) ||
+    ('message' in block && block.message) ||
+    ('label' in block && block.label) ||
+    '(sem título)';
 
   return (
-    <div className="rounded-md border border-border bg-background">
-      <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">
-            <span className="mr-2 inline-block rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-muted-foreground">
+    <li className="overflow-hidden rounded-sm border border-border bg-surface-raised shadow-xs transition-colors hover:border-border-strong">
+      <header className="flex items-center justify-between gap-2 px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="numeral-serif flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-[0.75rem] font-medium text-primary-foreground">
+            {index}
+          </span>
+          <span aria-hidden className="text-base text-primary">{BLOCK_TYPE_ICON[block.type]}</span>
+          <div className="min-w-0">
+            <span className="block truncate text-sm font-medium text-foreground">{title}</span>
+            <span className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">
               {BLOCK_TYPE_LABELS[block.type]}
             </span>
-            {('title' in block && block.title) || ('message' in block && block.message) || ('label' in block && block.label) || '(sem título)'}
-          </p>
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <button type="button" onClick={onMoveUp} disabled={isFirst} className="rounded-md border border-border px-1.5 py-0.5 text-xs hover:bg-muted disabled:opacity-30">↑</button>
-          <button type="button" onClick={onMoveDown} disabled={isLast} className="rounded-md border border-border px-1.5 py-0.5 text-xs hover:bg-muted disabled:opacity-30">↓</button>
-          <button type="button" onClick={() => setOpen((o) => !o)} className="rounded-md border border-border px-2 py-0.5 text-xs hover:bg-muted">{open ? 'Fechar' : 'Editar'}</button>
-          <button type="button" onClick={onRemove} className="rounded-md border border-destructive/30 px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10">Excluir</button>
+          <IconBtn onClick={onMoveUp} disabled={isFirst} title="Mover pra cima">↑</IconBtn>
+          <IconBtn onClick={onMoveDown} disabled={isLast} title="Mover pra baixo">↓</IconBtn>
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="rounded-sm border border-border bg-surface px-2 py-1 text-[0.6875rem] text-foreground-secondary hover:bg-muted hover:text-foreground"
+          >
+            {open ? 'Fechar' : 'Editar'}
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="rounded-sm border border-border bg-surface px-2 py-1 text-[0.6875rem] text-muted-foreground hover:border-destructive/40 hover:bg-destructive-soft hover:text-destructive"
+            title="Excluir bloco"
+          >
+            ✕
+          </button>
         </div>
       </header>
 
       {open ? (
-        <div className="p-3">
+        <div className="border-t border-border-subtle bg-surface px-3 py-3">
           {block.type === 'info_card' ? <InfoCardEditor block={block} onUpdate={(p) => onUpdate(p as Partial<Block>)} /> : null}
           {block.type === 'metric' ? <MetricEditor block={block} onUpdate={(p) => onUpdate(p as Partial<Block>)} /> : null}
           {block.type === 'table' ? <TableEditor block={block} onUpdate={(p) => onUpdate(p as Partial<Block>)} /> : null}
@@ -241,7 +295,31 @@ function BlockEditor({
           <VisibleWhenEditor block={block} onUpdate={(p) => onUpdate(p as Partial<Block>)} />
         </div>
       ) : null}
-    </div>
+    </li>
+  );
+}
+
+function IconBtn({
+  onClick,
+  disabled,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="rounded-sm border border-border bg-surface px-1.5 py-1 text-[0.6875rem] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -249,16 +327,128 @@ function BlockEditor({
 
 const FORMATS = ['text', 'number', 'currency', 'percentage', 'date', 'datetime', 'boolean', 'phone', 'document', 'email', 'url', 'badge'] as const;
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Section({
+  eyebrow,
+  title,
+  hint,
+  right,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  hint?: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
-    <label className="flex flex-col gap-1 text-sm">
-      <span className="text-xs text-muted-foreground">{label}</span>
+    <section className="card flex flex-col gap-4 p-5">
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <p className="divider-eyebrow text-muted-foreground">
+            <span className="numeral-serif text-[0.6875rem] text-primary">{eyebrow}</span>
+            <span className="mx-1.5 opacity-40">·</span>
+            {title}
+          </p>
+          {hint ? <p className="mt-1.5 text-xs text-muted-foreground">{hint}</p> : null}
+        </div>
+        {right}
+      </header>
+      <div className="flex flex-col gap-3">{children}</div>
+    </section>
+  );
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-xs font-medium text-foreground-secondary">{label}</span>
       {children}
+      {hint ? <span className="text-[0.6875rem] text-muted-foreground">{hint}</span> : null}
     </label>
   );
 }
 
-const inputClass = 'rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary';
+function Toggle({
+  active,
+  onChange,
+  label,
+  hint,
+}: {
+  active: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  hint?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!active)}
+      className={`inline-flex items-center gap-2 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+        active
+          ? 'border-success bg-success-soft text-success'
+          : 'border-border bg-surface-raised text-muted-foreground hover:bg-muted hover:text-foreground'
+      }`}
+    >
+      <span
+        className={`flex h-3.5 w-3.5 items-center justify-center rounded-full border ${active ? 'border-current bg-current/20' : 'border-current'}`}
+        aria-hidden
+      >
+        {active ? <span className="text-[0.625rem] leading-none">✓</span> : null}
+      </span>
+      {label}
+      {hint ? <span className="opacity-60">· {hint}</span> : null}
+    </button>
+  );
+}
+
+const inputClass =
+  'w-full rounded-sm border border-border bg-surface-raised px-2.5 py-1.5 text-sm shadow-xs outline-none transition-colors focus:border-primary focus:bg-background';
+
+function SelectBox({
+  value,
+  onChange,
+  children,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative">
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputClass} appearance-none pr-8`}>
+        {children}
+      </select>
+      <span aria-hidden className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+        ▾
+      </span>
+    </div>
+  );
+}
+
+function RemoveRowBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Remover"
+      className="self-stretch rounded-sm border border-border bg-surface px-2 text-xs text-muted-foreground hover:border-destructive/40 hover:bg-destructive-soft hover:text-destructive"
+    >
+      −
+    </button>
+  );
+}
+
+function AddRowBtn({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 self-start rounded-sm border border-dashed border-primary/40 bg-primary-soft/40 px-3 py-1.5 text-xs font-medium text-primary hover:border-primary hover:bg-primary-soft"
+    >
+      <span aria-hidden>＋</span> {children}
+    </button>
+  );
+}
 
 function InfoCardEditor({ block, onUpdate }: { block: InfoCardBlock; onUpdate: (p: Partial<InfoCardBlock>) => void }) {
   return (
@@ -267,7 +457,7 @@ function InfoCardEditor({ block, onUpdate }: { block: InfoCardBlock; onUpdate: (
         <input value={block.title} onChange={(e) => onUpdate({ title: e.target.value })} className={inputClass} />
       </Field>
       <div className="flex flex-col gap-2">
-        <p className="text-xs text-muted-foreground">Campos</p>
+        <p className="text-xs font-medium text-foreground-secondary">Campos</p>
         {block.fields.map((f, i) => (
           <div key={i} className="grid grid-cols-[1fr_2fr_120px_auto] gap-2">
             <input
@@ -290,37 +480,28 @@ function InfoCardEditor({ block, onUpdate }: { block: InfoCardBlock; onUpdate: (
               }}
               className={`${inputClass} font-mono text-xs`}
             />
-            <select
+            <SelectBox
               value={f.format}
-              onChange={(e) => {
+              onChange={(v) => {
                 const fields = block.fields.slice();
-                fields[i] = { ...fields[i], format: e.target.value as InfoCardBlock['fields'][number]['format'] };
+                fields[i] = { ...fields[i], format: v as InfoCardBlock['fields'][number]['format'] };
                 onUpdate({ fields });
               }}
-              className={inputClass}
             >
               {FORMATS.map((fmt) => <option key={fmt} value={fmt}>{fmt}</option>)}
-            </select>
-            <button
-              type="button"
+            </SelectBox>
+            <RemoveRowBtn
               onClick={() => {
                 const fields = block.fields.filter((_, idx) => idx !== i);
                 if (fields.length === 0) fields.push({ label: 'Novo', value: '', format: 'text' });
                 onUpdate({ fields });
               }}
-              className="rounded-md border border-destructive/30 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
-            >
-              −
-            </button>
+            />
           </div>
         ))}
-        <button
-          type="button"
-          onClick={() => onUpdate({ fields: [...block.fields, { label: 'Novo', value: '', format: 'text' }] })}
-          className="self-start rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-        >
-          + Adicionar campo
-        </button>
+        <AddRowBtn onClick={() => onUpdate({ fields: [...block.fields, { label: 'Novo', value: '', format: 'text' }] })}>
+          Adicionar campo
+        </AddRowBtn>
       </div>
     </div>
   );
@@ -342,9 +523,9 @@ function MetricEditor({ block, onUpdate }: { block: MetricBlock; onUpdate: (p: P
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Formato">
-          <select value={block.format} onChange={(e) => onUpdate({ format: e.target.value as MetricBlock['format'] })} className={inputClass}>
+          <SelectBox value={block.format} onChange={(v) => onUpdate({ format: v as MetricBlock['format'] })}>
             {FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
-          </select>
+          </SelectBox>
         </Field>
         {block.format === 'currency' ? (
           <Field label="Moeda">
@@ -374,7 +555,7 @@ function TableEditor({ block, onUpdate }: { block: TableBlock; onUpdate: (p: Par
         <input value={block.emptyMessage ?? ''} onChange={(e) => onUpdate({ emptyMessage: e.target.value })} className={inputClass} />
       </Field>
       <div className="flex flex-col gap-2">
-        <p className="text-xs text-muted-foreground">Colunas (value é relativo ao item do array)</p>
+        <p className="text-xs font-medium text-foreground-secondary">Colunas <span className="font-normal text-muted-foreground">(value é relativo ao item do array)</span></p>
         {block.columns.map((c, i) => (
           <div key={i} className="grid grid-cols-[1fr_1fr_120px_auto] gap-2">
             <input
@@ -397,37 +578,28 @@ function TableEditor({ block, onUpdate }: { block: TableBlock; onUpdate: (p: Par
               }}
               className={`${inputClass} font-mono text-xs`}
             />
-            <select
+            <SelectBox
               value={c.format}
-              onChange={(e) => {
+              onChange={(v) => {
                 const columns = block.columns.slice();
-                columns[i] = { ...columns[i], format: e.target.value as TableBlock['columns'][number]['format'] };
+                columns[i] = { ...columns[i], format: v as TableBlock['columns'][number]['format'] };
                 onUpdate({ columns });
               }}
-              className={inputClass}
             >
               {FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
-            </select>
-            <button
-              type="button"
+            </SelectBox>
+            <RemoveRowBtn
               onClick={() => {
                 const columns = block.columns.filter((_, idx) => idx !== i);
                 if (columns.length === 0) columns.push({ label: 'Nova', value: '', format: 'text' });
                 onUpdate({ columns });
               }}
-              className="rounded-md border border-destructive/30 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
-            >
-              −
-            </button>
+            />
           </div>
         ))}
-        <button
-          type="button"
-          onClick={() => onUpdate({ columns: [...block.columns, { label: 'Nova', value: '', format: 'text' }] })}
-          className="self-start rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-        >
-          + Adicionar coluna
-        </button>
+        <AddRowBtn onClick={() => onUpdate({ columns: [...block.columns, { label: 'Nova', value: '', format: 'text' }] })}>
+          Adicionar coluna
+        </AddRowBtn>
       </div>
     </div>
   );
@@ -437,18 +609,18 @@ function AlertEditor({ block, onUpdate }: { block: AlertBlock; onUpdate: (p: Par
   return (
     <div className="flex flex-col gap-3">
       <Field label="Variante">
-        <select value={block.variant} onChange={(e) => onUpdate({ variant: e.target.value as AlertBlock['variant'] })} className={inputClass}>
+        <SelectBox value={block.variant} onChange={(v) => onUpdate({ variant: v as AlertBlock['variant'] })}>
           <option value="info">Info</option>
           <option value="success">Sucesso</option>
           <option value="warning">Aviso</option>
           <option value="destructive">Crítico</option>
-        </select>
+        </SelectBox>
       </Field>
       <Field label="Mensagem (template)">
         <input value={block.message} onChange={(e) => onUpdate({ message: e.target.value })} className={inputClass} />
       </Field>
       <Field label="Ícone (emoji opcional)">
-        <input value={block.icon ?? ''} onChange={(e) => onUpdate({ icon: e.target.value })} maxLength={4} className={inputClass} />
+        <input value={block.icon ?? ''} onChange={(e) => onUpdate({ icon: e.target.value })} maxLength={4} className={`${inputClass} w-24`} />
       </Field>
     </div>
   );
@@ -470,17 +642,17 @@ function ActionButtonEditor({ block, onUpdate }: { block: ActionButtonBlock; onU
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Estilo">
-          <select value={block.variant} onChange={(e) => onUpdate({ variant: e.target.value as ActionButtonBlock['variant'] })} className={inputClass}>
+          <SelectBox value={block.variant} onChange={(v) => onUpdate({ variant: v as ActionButtonBlock['variant'] })}>
             <option value="primary">Primary</option>
             <option value="secondary">Secondary</option>
             <option value="outline">Outline</option>
-          </select>
+          </SelectBox>
         </Field>
         <Field label="Abrir em">
-          <select value={block.openIn} onChange={(e) => onUpdate({ openIn: e.target.value as ActionButtonBlock['openIn'] })} className={inputClass}>
+          <SelectBox value={block.openIn} onChange={(v) => onUpdate({ openIn: v as ActionButtonBlock['openIn'] })}>
             <option value="new_tab">Nova aba</option>
             <option value="same_tab">Mesma aba</option>
-          </select>
+          </SelectBox>
         </Field>
       </div>
     </div>
@@ -492,64 +664,48 @@ function VisibleWhenEditor({ block, onUpdate }: { block: Block; onUpdate: (p: Pa
   const isSimple = cond && 'field' in cond;
 
   return (
-    <details className="mt-3 border-t border-border pt-3">
-      <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+    <details className="mt-3 border-t border-border-subtle pt-3">
+      <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
         Condição de exibição {block.visibleWhen ? '(configurada)' : '(sempre visível)'}
       </summary>
-      <div className="mt-2 flex flex-col gap-2">
+      <div className="mt-2.5 flex flex-col gap-2">
         {isSimple ? (
-          <>
-            <div className="grid grid-cols-[2fr_1fr_2fr_auto] gap-2">
-              <input
-                value={cond.field}
-                placeholder="partner.status"
-                onChange={(e) => onUpdate({ visibleWhen: { ...cond, field: e.target.value } })}
-                className={`${inputClass} font-mono text-xs`}
-              />
-              <select
-                value={cond.op}
-                onChange={(e) => onUpdate({ visibleWhen: { ...cond, op: e.target.value as typeof cond.op } })}
-                className={inputClass}
-              >
-                <option value="exists">existe</option>
-                <option value="not_exists">não existe</option>
-                <option value="empty">vazio</option>
-                <option value="not_empty">não vazio</option>
-                <option value="eq">igual</option>
-                <option value="ne">diferente</option>
-                <option value="gt">maior que</option>
-                <option value="gte">maior ou igual</option>
-                <option value="lt">menor que</option>
-                <option value="lte">menor ou igual</option>
-                <option value="contains">contém</option>
-                <option value="not_contains">não contém</option>
-              </select>
-              <input
-                value={cond.value === undefined ? '' : String(cond.value)}
-                placeholder="valor"
-                onChange={(e) => onUpdate({ visibleWhen: { ...cond, value: e.target.value } })}
-                className={inputClass}
-              />
-              <button
-                type="button"
-                onClick={() => onUpdate({ visibleWhen: undefined })}
-                className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-              >
-                Remover
-              </button>
-            </div>
-          </>
+          <div className="grid grid-cols-[2fr_1fr_2fr_auto] gap-2">
+            <input
+              value={cond.field}
+              placeholder="partner.status"
+              onChange={(e) => onUpdate({ visibleWhen: { ...cond, field: e.target.value } })}
+              className={`${inputClass} font-mono text-xs`}
+            />
+            <SelectBox value={cond.op} onChange={(v) => onUpdate({ visibleWhen: { ...cond, op: v as typeof cond.op } })}>
+              <option value="exists">existe</option>
+              <option value="not_exists">não existe</option>
+              <option value="empty">vazio</option>
+              <option value="not_empty">não vazio</option>
+              <option value="eq">igual</option>
+              <option value="ne">diferente</option>
+              <option value="gt">maior que</option>
+              <option value="gte">maior ou igual</option>
+              <option value="lt">menor que</option>
+              <option value="lte">menor ou igual</option>
+              <option value="contains">contém</option>
+              <option value="not_contains">não contém</option>
+            </SelectBox>
+            <input
+              value={cond.value === undefined ? '' : String(cond.value)}
+              placeholder="valor"
+              onChange={(e) => onUpdate({ visibleWhen: { ...cond, value: e.target.value } })}
+              className={inputClass}
+            />
+            <RemoveRowBtn onClick={() => onUpdate({ visibleWhen: undefined })} />
+          </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => onUpdate({ visibleWhen: { field: 'partner.id', op: 'exists' } })}
-            className="self-start rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-          >
-            + Adicionar condição
-          </button>
+          <AddRowBtn onClick={() => onUpdate({ visibleWhen: { field: 'partner.id', op: 'exists' } })}>
+            Adicionar condição
+          </AddRowBtn>
         )}
-        <p className="text-xs text-muted-foreground">
-          Combinações <code>all/any/not</code> não estão expostas aqui no MVP — edite via JSON se precisar.
+        <p className="text-[0.6875rem] text-muted-foreground">
+          Combinações <code className="rounded-sm bg-muted px-1 font-mono">all/any/not</code> não estão expostas aqui no MVP — edite via JSON se precisar.
         </p>
       </div>
     </details>

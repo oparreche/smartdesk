@@ -54,21 +54,24 @@ export function PreviewPanel({ config, ticketCode, onTicketCodeChange }: Props) 
   }
 
   return (
-    <aside className="sticky top-4 flex h-fit max-h-[calc(100vh-2rem)] flex-col gap-3 overflow-y-auto rounded-md border border-border bg-muted/20 p-4">
-      <header className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Preview</h2>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-xs text-muted-foreground">Ticket de exemplo (vazio = sem dados)</span>
+    <aside className="card sticky top-4 flex h-fit max-h-[calc(100dvh-2rem)] flex-col gap-3 overflow-y-auto bg-surface-sunken/40 p-4">
+      <header className="flex flex-col gap-2.5">
+        <div className="flex items-center justify-between">
+          <p className="divider-eyebrow text-muted-foreground">Preview ao vivo</p>
+          {loading ? <span className="text-[0.6875rem] text-muted-foreground">↻ atualizando…</span> : null}
+        </div>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium text-foreground-secondary">Ticket de exemplo <span className="font-normal text-muted-foreground">(vazio = sem dados)</span></span>
           <input
             value={ticketCode}
             onChange={(e) => onTicketCodeChange(e.target.value.toUpperCase())}
             placeholder="HELP-100001"
-            className="rounded-md border border-border bg-background px-2.5 py-1.5 font-mono text-sm outline-none focus:ring-2 focus:ring-primary"
+            className="w-full rounded-sm border border-border bg-surface-raised px-2.5 py-1.5 font-mono text-sm shadow-xs outline-none transition-colors focus:border-primary focus:bg-background"
           />
         </label>
-        {loading ? <p className="text-xs text-muted-foreground">Atualizando…</p> : null}
-        {error ? <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">{error}</p> : null}
+        {error ? <p className="rounded-sm border border-destructive/30 bg-destructive-soft px-2.5 py-1.5 text-xs text-destructive">⚠ {error}</p> : null}
       </header>
+      <div className="h-px bg-border-subtle" />
 
       <div className="flex flex-col gap-3">
         {blocks === null && !error ? (
